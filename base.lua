@@ -1,3 +1,17 @@
+--traceroute.h
+TR_RESULT_GOTTHERE	=1    --/* Got the destination host.                */
+TR_RESULT_UNREACH	=2    --/* Destination host/network is unreachable. */
+TR_RESULT_TIMEOUT	=3    --/* Waiting for the return packets timeout.  */
+TR_RESULT_MAXHOP	=4    --/* Traceroute reached the max hop.          */
+TR_RESULT_LOOP		=5    --/* There is a loop in route.                */
+TR_RESULT_FAKE		=6    --/* The return packet with a fake source IP  */
+TR_RESULT_DESIGN	=7    --/* Traceroute finished by our design.       */
+NR_TR_RESULT		=7    --/* The number of traceroute results.        */
+
+MAX_TIMEOUT_PER_HOP	=3 --/* Max re-probing times when timeout.  */
+MAX_TIMEOUT_HOPS   	=3    --/* Max continued probing hops when timeout. */
+MAX_HOP           	=30    --/* Max hop(TTL) that traceroute can reach.  */
+
 ICMP_NET_UNREACH	=0	--/*	Network	Unreachable	*/
 ICMP_HOST_UNREACH	=1	--/*	Host	Unreachable	*/
 ICMP_PROT_UNREACH	=2	--/*	Protocol	Unreachable	*/
@@ -36,6 +50,17 @@ RPK_TIMEEXC			=11	--/*	ICMP	TIME	EXCEEDED	for	TTL	being	ZERO.	*/
 
 RPK_UNREACH	=12	
 
+NR_PK_TYPE =(RPK_UNREACH + NR_ICMP_UNREACH)
+
+function IS_UNREACH(rpk_type)
+	if rpk_type >= RPK_UNREACH and rpk_type<=NR_PK_TYPE then
+		return 1
+	else
+		return 0
+	end
+end
+
+
 
 PROBING_TYPE_ARRAY	=	{
 	PPK_SYN,	PPK_UDPBIGPORT,	PPK_ICMPECHO,
@@ -57,6 +82,8 @@ PROBING_DPORT_ARRAY	=	{
 
 NR_PROBING_ARRAY	=18
 NR_PACKET_EACH_TYPE	=3
+
+
 --
 --ICMP	TYPE
 ICMP_ECHOREPLY		=0	--/*	Echo	Reply		*/
@@ -107,3 +134,5 @@ ICMP_EXC_FRAGTIME	=1	--/*	Fragment	Reass	time	exceeded	*/
 
 IP_HEAD_SIZE		=20
 ICMP_HEAD_SIZE		=8
+
+
