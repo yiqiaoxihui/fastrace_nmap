@@ -53,11 +53,13 @@ local function GET_TRY(try)
 	return try
 end
 
+
 local function hopping(dst_ip,ttl,try)
 	local pi={}		--探测信息
 	-- print(try)
 	local send_packet_type=PROBING_TYPE_ARRAY[try]
 	pi['dport']=PROBING_DPORT_ARRAY[try]
+	pi['sport']=math.random(0x7000, 0xffff)		--why from 7000
 	pi['wt']=3000								--wait time
 	pi['ttl']=ttl
 	pi['dst']=dst_ip
@@ -70,11 +72,14 @@ local function hopping(dst_ip,ttl,try)
 	elseif send_packet_type==PPK_ACK then
 
 	elseif send_packet_type==PPK_SYN then
-
+		-- print("probe type:PPK_TCP_SYN")
+		rpk_type, from=prober.send_tcp_syn(pi,send_l3_sock,iface.device)
 	elseif send_packet_type==PPK_FIN then
 
 	elseif send_packet_type==PPK_UDPBIGPORT then
-
+		-- print("probe type:PPK_UDPBIGPORT")
+		rpk_type, from=prober.send_udp_big_port(pi,send_l3_sock,iface.device)
+		-- print("probe result:rpk_type,from:",rpk_type,from)
 	end
 	return rpk_type,from
 	-- body
@@ -87,7 +92,7 @@ local function forward_traceroute(trace,cmptrace)
 	local timeout_hops=0		--hop超时计数器，意思是连续有timeout_hops跳未响应，即退出
 	local compare_each_from=0	--
 	local timeouth=0
-	try=3					--更改发包类型,lua，table下标从0开始
+	try=1					--更改发包类型,lua，table下标从0开始
 	if cmptrace then
 		if trace['start']==0 then
 			trace['start']=cmptrace['end']
@@ -120,10 +125,10 @@ local function forward_traceroute(trace,cmptrace)
 		--超时未响应
 		if rpk_type==RPK_TIMEOUT then
 			timeout=timeout+1
+			print("*HOP:",ttl,"timeout:",timeout,timeout_hops)
 			if compare_each_from==1 and cmptrace ~=nil then
 				--TODO:近邻无应答结束技术 NNS
 			end
-
 			if timeout==MAX_TIMEOUT_PER_HOP then	--连续3次超时
 				timeout=0
 				timeout_hops=timeout_hops+1
@@ -141,7 +146,6 @@ local function forward_traceroute(trace,cmptrace)
 				end		--end timeout_hops==MAX_TIMEOUT_HOPS
 				ttl=ttl+1
 			end	--end timeout==MAX_TIMEOUT_PER_HOP
-			print("!HOP:",ttl,"timeout:",timeout,timeout_hops)
 			goto hopping_begin
 		end		--end rpk_type==RPK_TIMEOUT 
 		--收到回复包，重置超时计数器
@@ -222,6 +226,8 @@ action=function()
 		return fail("no target in input")
 	end
 	--针对单个ip的正常traceroute
+	-- rpk_type,from= hopping(dst_ip,32,1)
+	-- print(rpk_type,from)
 	normal_traceroute(dst_ip)
 	return true
 end

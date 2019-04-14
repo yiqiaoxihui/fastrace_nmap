@@ -39,14 +39,13 @@ categories = {"discovery", "safe"}
 -- 	return true
 -- end
 -- The Rule Section --
-hostrule=function(host)
-	--print("hostrule:",host.ip)
+prerule=function()
 	return true
 end
-portrule = function(host)
---return true
-	
---return port.state=="closed" 
+-- The Rule Section --
+hostrule=function(host)
+	--print("hostrule()")
+	return true
 end
 -- local	PROBING_DPORT_ARRAY={
 -- 	    80, 45981, 0,
@@ -93,7 +92,7 @@ local function send_icmp_echo(pi)
 	send_l3_sock:ip_send(ip.buf)
 	local status,len,l2_icmp_t_l,l3_icmp_tole,time=icmp_tole_rec_socket:pcap_receive()
 	if status then
-		print("get icmp exceed back")
+		print("get icmp exceed back,len:",len)
 		local icmp_timeexc_packet = packet.Packet:new(l3_icmp_tole, #l3_icmp_tole)
 		from=icmp_timeexc_packet['ip_src']
 		for k,v in pairs(icmp_timeexc_packet) do
@@ -128,6 +127,10 @@ local function hopping(dst_ip,ttl,try)
 	end
 	-- body
 end
+local function send_udp_big_port(pi,send_l3_sock,device)
+	
+end
+
 action=function(host)
 	local ifname = nmap.get_interface() or host.interface
 	if not ifname then
