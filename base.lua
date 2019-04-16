@@ -59,7 +59,7 @@ TR_RESULT_FAKE		=6    --/* The return packet with a fake source IP  */
 TR_RESULT_DESIGN	=7    --/* Traceroute finished by our design.       */
 NR_TR_RESULT		=7    --/* The number of traceroute results.        */
 
-MAX_TIMEOUT_PER_HOP	=3 --/* Max re-probing times when timeout.  */
+MAX_TIMEOUT_PER_HOP	=2 --/* Max re-probing times when timeout.  */
 MAX_TIMEOUT_HOPS   	=3    --/* Max continued probing hops when timeout. */
 MAX_HOP           	=30    --/* Max hop(TTL) that traceroute can reach.  */
 

@@ -67,17 +67,19 @@ local function hopping(dst_ip,ttl,try)
 	local rpk_type=0
 	local from
 	if send_packet_type==PPK_ICMPECHO then		--3
-		-- print("probe type:PPK_ICMPECHO")
+		print("probe type:PPK_ICMPECHO")
 		rpk_type, from=prober.send_icmp_echo(pi,send_l3_sock,iface.device)
 	elseif send_packet_type==PPK_ACK then
-
+		print("probe type:PPK_TCP_ACK")	--效果不佳
+		rpk_type, from=prober.send_tcp_ack(pi,send_l3_sock,iface.device)
 	elseif send_packet_type==PPK_SYN then
-		-- print("probe type:PPK_TCP_SYN")
+		print("probe type:PPK_TCP_SYN")
 		rpk_type, from=prober.send_tcp_syn(pi,send_l3_sock,iface.device)
 	elseif send_packet_type==PPK_FIN then
-
+		print("probe type:PPK_TCP_FIN")	--效果很差
+		rpk_type, from=prober.send_tcp_fin(pi,send_l3_sock,iface.device)
 	elseif send_packet_type==PPK_UDPBIGPORT then
-		-- print("probe type:PPK_UDPBIGPORT")
+		print("probe type:PPK_UDPBIGPORT")
 		rpk_type, from=prober.send_udp_big_port(pi,send_l3_sock,iface.device)
 		-- print("probe result:rpk_type,from:",rpk_type,from)
 	end
@@ -92,7 +94,7 @@ local function forward_traceroute(trace,cmptrace)
 	local timeout_hops=0		--hop超时计数器，意思是连续有timeout_hops跳未响应，即退出
 	local compare_each_from=0	--
 	local timeouth=0
-	try=1					--更改发包类型,lua，table下标从0开始
+	try=3					--更改发包类型,lua，table下标从0开始
 	if cmptrace then
 		if trace['start']==0 then
 			trace['start']=cmptrace['end']
@@ -108,7 +110,7 @@ local function forward_traceroute(trace,cmptrace)
 		-- print("begin:",timeout,timeout_hops)
 		::hopping_begin::
 		if timeout >=1 or timeout_hops>=1 then
-			--try=GET_TRY(try)
+			-- try=GET_TRY(try)
 		end
 		-- print("begin hopping:",rpk_type,from)
 		rpk_type,from=hopping(trace['dst'],ttl,try)
