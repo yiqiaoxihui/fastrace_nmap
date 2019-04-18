@@ -1,4 +1,9 @@
-
+local stdnse = require "stdnse"
+local ipOps = require "ipOps"
+local math = require "math"
+local bit = require "bit"
+local bin = require "bin"
+local string = require "string"
 --
 --ICMP	TYPE
 ICMP_ECHOREPLY		=0	--/*	Echo	Reply		*/
@@ -87,6 +92,7 @@ RPK_UNREACH	=12
 
 NR_PK_TYPE =(RPK_UNREACH + NR_ICMP_UNREACH)
 
+--是否是icmp不可达信息
 function IS_UNREACH(rpk_type)
 	if rpk_type >= RPK_UNREACH and rpk_type<=NR_PK_TYPE then
 		return 1
@@ -94,8 +100,109 @@ function IS_UNREACH(rpk_type)
 		return 0
 	end
 end
+-- "1.2.2.3/16" to 1.2.2.3 16
+function str2cidr(str)
+	local cidr_list=stdnse.strsplit("/",str)
+	local cidr={}
+	if #cidr_list ~= 2 then
+		cidr['ip']=str
+		cidr['fpx']=32
+		return cidr
+	end
+	cidr['ip']=cidr_list[1]
+	cidr['fpx']=tonumber(cidr_list[2])
+	-- local number_ip = ipOps.todword(cidr['ip'])
+	-- print(number_ip)
+	-- local a=3
+	-- print(bit.lshift(a,2))
+	-- print(bit.band(a,2))
+	-- a = (a << 2)
+	-- print(a)
+	local ip=ipOps.ip_to_bin(cidr['ip'])
+	-- print("get cidr:",cidr['ip'],cidr['fpx'])
+	if not cidr['fpx'] or ( cidr['fpx'] < 0 ) or ( cidr['fpx'] > #ip  ) then
+		print("Error: Invalid cidr prefix length.")
+		cidr['ip']=0
+		cidr['fpx']=0
+		return cidr
+	end
+	return cidr
+end
 
 
+---
+-- Converts the supplied IPv4 address from a DWORD value into a dotted string.
+--
+-- For example, the address (((a*256+b)*256+c)*256+d) becomes a.b.c.d.
+--
+--@param ip DWORD representing an IPv4 address.
+--@return The string representing the address.
+
+---
+-- Converts the supplied IPv4 address from a DWORD value into a dotted string. 
+--
+-- For example, the address (((a*256+b)*256+c)*256+d) becomes a.b.c.d. 
+--
+--@param ip DWORD representing an IPv4 address. 
+--@return The string representing the address. 
+function fastrace_fromdword( ip )
+  if type( ip ) ~= "number" then
+    stdnse.print_debug(1, "Error in ipOps.todword: Expected IPv4 address.")
+    return nil
+  end
+
+  local n1 = bit.band(bit.rshift(ip, 24),  0x000000FF)
+  local n2 = bit.band(bit.rshift(ip, 16),  0x000000FF)
+  local n3 = bit.band(bit.rshift(ip, 8), 0x000000FF)
+  local n4 = bit.band(bit.rshift(ip, 0), 0x000000FF)
+  return string.format("%d.%d.%d.%d", n1, n2, n3, n4)
+end
+
+
+function HOSTADDR(ip,pfx)
+	local number_ip = ipOps.todword(ip)
+	-- print(number_ip)
+	local ip= bit.band(number_ip,(bit.rshift(0xffffffff,pfx)))
+	return ip 		--fastrace_fromdword(ip)
+	-- body
+end
+
+function NETADDR(ip,pfx)
+	local number_ip = ipOps.todword(ip)
+	-- print(number_ip)
+	local ip= bit.band(number_ip,(bit.lshift(0xffffffff,(32-pfx))))
+	return ip 		--fastrace_fromdword(ip)
+	-- body
+end
+---
+-- Calculates the first and last IP addresses of a range of addresses,
+-- given an IP address in the range and a prefix length for that range
+-- @param ip String representing an IPv4 or IPv6 address.  Shortened notation
+--           is permitted.
+-- @param prefix Number or a string representing a decimal number corresponding
+--               to a prefix length.
+-- @usage
+-- first, last = ipOps.get_first_last_ip( "192.0.0.0", 26)
+-- @return String representing the first IP address of the range denoted by
+--         the supplied parameters (or <code>nil</code> in case of an error).
+-- @return String representing the last IP address of the range denoted by
+--         the supplied parameters (or <code>nil</code> in case of an error).
+-- @return String error message in case of an error.
+get_first_last_ip = function(ip, prefix)
+  local err
+  ip, err = ipOps.ip_to_bin(ip)
+  if err then return nil, nil, err end
+  -- print(ip)
+  prefix = tonumber(prefix)
+  if not prefix or prefix ~= math.floor(prefix) or prefix < 0 or prefix > #ip then
+    return nil, nil, "Error in ipOps.get_first_last_ip: Invalid prefix."
+  end
+
+  local net = ip:sub(1, prefix)
+  local first = ipOps.bin_to_ip(net .. ("0"):rep(#ip - prefix))
+  local last  = ipOps.bin_to_ip(net .. ("1"):rep(#ip - prefix))
+  return first, last
+end
 
 PROBING_TYPE_ARRAY	=	{
 	PPK_SYN,	PPK_UDPBIGPORT,	PPK_ICMPECHO,
@@ -118,6 +225,8 @@ PROBING_DPORT_ARRAY	=	{
 NR_PROBING_ARRAY	=18
 NR_PACKET_EACH_TYPE	=3
 
+--最大前缀长度
+MAX_PREFIX_LEN		=30
 
 
 
