@@ -12,6 +12,7 @@ local dns = require "dns"
 
 require('base')
 require('prober')
+require('last_hop')
 require('unit_test')
 local Stack=require('stack')
 -- require('parsepack') in prober
@@ -303,6 +304,9 @@ local function treetrace(cidr)
 	
 end
 
+local function last_hop()
+	-- body
+end
 action=function()
 	print("__________________")
 	local ifname = nmap.get_interface() or host.interface
@@ -316,25 +320,36 @@ action=function()
 	if not dst_ip then
 		return fail("no target in input")
 	end
+	local prober_type=stdnse.get_script_args("type")
+	if prober_type =='last_hop' then
+		last_hop_main(dst_ip,iface)
+		send_l3_sock:ip_close()
+		return true
+	end
 	--针对单个ip的正常traceroute
 	-- rpk_type,from= hopping(dst_ip,32,1)
 	-- print(rpk_type,from)
-	-- normal_traceroute(dst_ip)
-	local cidr = str2cidr(dst_ip)
-	print(cidr['ip'],cidr['fpx'])
+	--调用last_hop.lua
+	
+	normal_traceroute(dst_ip)
+
+	-- local cidr = str2cidr(dst_ip)
+	-- print(cidr['ip'],cidr['fpx'])
+
 	-- print(HOSTADDR(cidr['ip'],cidr['fpx']))
 	-- print(NETADDR(cidr['ip'],cidr['fpx']))
-	if cidr['fpx']>=32 then
-		normal_traceroute(cidr['ip'])
-	elseif cidr['fpx'] >=1 then
-		treetrace(cidr)
-	else
-		print("error cidr format:",dst_ip)
-	end
-	local s = Stack:new()
-	s:push(1)
-	s:push(2)
-	print(s:top())
-	s:printElement()
+	-- if cidr['fpx']>=32 then
+	-- 	normal_traceroute(cidr['ip'])
+	-- elseif cidr['fpx'] >=1 then
+	-- 	treetrace(cidr)
+	-- else
+	-- 	print("error cidr format:",dst_ip)
+	-- end
+	-- local s = Stack:new()
+	-- s:push(1)
+	-- s:push(2)
+	-- print(s:top())
+	-- s:printElement()
+	send_l3_sock:ip_close()
 	return true
 end
