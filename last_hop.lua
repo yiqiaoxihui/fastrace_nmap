@@ -334,7 +334,7 @@ function last_hop_main(dst_ip,iface)
 	--用于发送设置了ttl的探测末跳报文
 	local send_l3_sock = nmap.new_dnet()
 	send_l3_sock:ip_open()
-
+	print("action:",dst_ip)
 	--建立监听线程,用于接受icmp端口不可达包
 	--
 	-- @param icmp_pu_listener function name

@@ -161,7 +161,10 @@ end
 
 function HOSTADDR(ip,pfx)
 	local number_ip = ipOps.todword(ip)
-	-- print(number_ip)
+	if not number_ip then
+		print("illege ip number:",ip,pfx)
+		return nil
+	end
 	local ip= bit.band(number_ip,(bit.rshift(0xffffffff,pfx)))
 	return ip 		--fastrace_fromdword(ip)
 	-- body
@@ -169,9 +172,22 @@ end
 
 function NETADDR(ip,pfx)
 	local number_ip = ipOps.todword(ip)
-	-- print(number_ip)
+	if not number_ip then
+		print("illege ip number:",ip,pfx)
+		return nil
+	end
 	local ip= bit.band(number_ip,(bit.lshift(0xffffffff,(32-pfx))))
 	return ip 		--fastrace_fromdword(ip)
+	-- body
+end
+function IP_INC(ip)
+	local number_ip = ipOps.todword(ip)
+	if not number_ip then
+		print("illege ip number:",ip)
+		return nil
+	end
+	number_ip=number_ip+1
+	return fastrace_fromdword(ip) 		--fastrace_fromdword(ip)
 	-- body
 end
 ---

@@ -301,11 +301,25 @@ local function normal_traceroute(dst_ip)
 	forward_traceroute(trace,nil)
 end
 local function treetrace(cidr)
-	
+	local newsr = {}
+	local oldsr = {}
+	local s = Stack:new()
+	if cidr['pfx']>=MAX_PREFIX_LEN then
+		if (cidr['pfx'] ~=32) and (HOSTADDR(cidr['ip'],cidr['fpx'])==0) then
+			cidr['ip']=IP_INC(cidr['ip'])
+		end
+		normal_traceroute(cidr['ip'])
+		return
+	end
+
 end
 
-local function last_hop()
-	-- body
+local function last_hop(dst_ip,iface,result)
+	local last_hop_condvar = nmap.condvar(result)
+	print('target:',dst_ip)
+	last_hop_main(dst_ip,iface)
+	print('end:',dst_ip)
+	last_hop_condvar "signal"
 end
 action=function()
 	print("__________________")
@@ -317,13 +331,87 @@ action=function()
 	send_l3_sock = nmap.new_dnet()
 	send_l3_sock:ip_open()
 	local dst_ip=stdnse.get_script_args("ip")
-	if not dst_ip then
-		return fail("no target in input")
+	local ip_file=stdnse.get_script_args("ip_file")
+	if (not dst_ip)  and (not ip_file) then
+		return fail("error:no target input")
 	end
-	local prober_type=stdnse.get_script_args("type")
+	if (dst_ip)  and (ip_file) then
+		return fail("error:muti target")
+	end
+
+	local prober_type=stdnse.get_script_args("type")	--默认traceroute
+
 	if prober_type =='last_hop' then
-		last_hop_main(dst_ip,iface)
+		if dst_ip then
+			local ip, err = ipOps.expand_ip(dst_ip)
+			if not err then
+				last_hop_main(dst_ip,iface)
+			else
+				return fail("error:illege ip")
+			end
+		elseif ip_file then 		--从文件读入
+			local last_hop_thread_handler={}
+			local last_hop_result={}
+			local last_hop_condvar = nmap.condvar(last_hop_result)
+			
+			--ip_file="ip10wt"
+			local ip_count=0
+			local ip_list={}
+			for line in io.lines(ip_file) do
+				local ip=stdnse.strsplit(" ", line)
+				-- print(line,ip[1])
+				--print(ip[1])
+				--print(line,":send udp packet, port:65534")
+				local temp, err = ipOps.expand_ip(ip[1])
+				if not err then
+					print(ip[1],ip_count)
+					ip_count=ip_count+1
+					table.insert(ip_list,ip[1])
+				else
+					print(ip[1],"error:illege ip")
+				end
+				if #ip_list >= 15 then
+					print('begin thread last_hop',ip_count)
+					for i in pairs(ip_list) do
+						local last_hop_co = stdnse.new_thread(last_hop,ip_list[i],iface,last_hop_result)
+						last_hop_thread_handler[last_hop_co]=true
+					end
+					
+				    repeat
+				        for thread in pairs(last_hop_thread_handler) do
+				            if coroutine.status(thread) == "dead" then
+				                last_hop_thread_handler[thread] = nil
+				            end
+				        end
+				        if (next(last_hop_thread_handler)) then
+				            last_hop_condvar "wait"
+				        end
+				    until next(last_hop_thread_handler) == nil
+				    ip_list={}
+				end--end of if #ip_list>=15
+			end--end of for
+			--处理剩余不足15个ip
+			print('begin thread last_hop',ip_count)
+			for i in pairs(ip_list) do
+				local last_hop_co = stdnse.new_thread(last_hop,ip_list[i],iface,last_hop_result)
+				last_hop_thread_handler[last_hop_co]=true
+			end
+			
+		    repeat
+		        for thread in pairs(last_hop_thread_handler) do
+		            if coroutine.status(thread) == "dead" then
+		                last_hop_thread_handler[thread] = nil
+		            end
+		        end
+		        if (next(last_hop_thread_handler)) then
+		            last_hop_condvar "wait"
+		        end
+		    until next(last_hop_thread_handler) == nil
+		end
+		-- last_hop_main(dst_ip,iface)
 		send_l3_sock:ip_close()
+		print('fastrace last_hop end')
+		print("__________________")
 		return true
 	end
 	--针对单个ip的正常traceroute
@@ -331,25 +419,52 @@ action=function()
 	-- print(rpk_type,from)
 	--调用last_hop.lua
 	
-	normal_traceroute(dst_ip)
-
-	-- local cidr = str2cidr(dst_ip)
-	-- print(cidr['ip'],cidr['fpx'])
-
-	-- print(HOSTADDR(cidr['ip'],cidr['fpx']))
-	-- print(NETADDR(cidr['ip'],cidr['fpx']))
-	-- if cidr['fpx']>=32 then
-	-- 	normal_traceroute(cidr['ip'])
-	-- elseif cidr['fpx'] >=1 then
-	-- 	treetrace(cidr)
-	-- else
-	-- 	print("error cidr format:",dst_ip)
-	-- end
+	-- normal_traceroute(dst_ip)
+	if dst_ip then
+		local cidr = str2cidr(dst_ip)
+		print(cidr['ip'],cidr['fpx'])
+		local temp, err = ipOps.expand_ip(cidr['ip'])
+		if err then
+			print("error:illege ip",cidr['ip'])
+			return true
+		end
+		print(HOSTADDR(cidr['ip'],cidr['fpx']))
+		print(NETADDR(cidr['ip'],cidr['fpx']))
+		if cidr['fpx']>=32 then
+			normal_traceroute(cidr['ip'])
+		elseif cidr['fpx'] >=1 then
+			treetrace(cidr)
+		else
+			print("error cidr format:",dst_ip)
+		end
+	elseif ip_file then 	--目标为文件
+		for line in io.lines(ip_file) do
+			local ip=stdnse.strsplit(" ", line)
+			local cidr = str2cidr(ip[1])
+			print(cidr['ip'],cidr['fpx'])
+			local temp, err = ipOps.expand_ip(cidr['ip'])
+			if not err then
+				print(HOSTADDR(cidr['ip'],cidr['fpx']))
+				print(NETADDR(cidr['ip'],cidr['fpx']))
+				if cidr['fpx']>=32 then
+					normal_traceroute(cidr['ip'])
+				elseif cidr['fpx'] >=1 then
+					treetrace(cidr)
+				else
+					print("error cidr format:",ip[1],cidr['ip'],cidr['fpx'])
+				end
+			else
+				print("error:illege ip",cidr['ip'])
+			end
+		end--end for
+	else
+	end
 	-- local s = Stack:new()
 	-- s:push(1)
 	-- s:push(2)
 	-- print(s:top())
 	-- s:printElement()
 	send_l3_sock:ip_close()
+
 	return true
 end
