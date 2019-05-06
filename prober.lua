@@ -38,7 +38,7 @@ function prober.send_icmp_echo(pi,send_l3_sock,device)
 	ip:build_ip_packet()
 	ip:ip_set_ttl(pi['ttl'])
 	send_l3_sock:ip_send(ip.buf)
-
+	
 	local status,len,l2_icmp,l3_icmp,time=icmp_rec_socket:pcap_receive()
 	if status then
 		-- print("get icmp packet back")

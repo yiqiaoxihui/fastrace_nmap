@@ -19,7 +19,7 @@ end
 
 function Stack:pop()
     local size = self:size()
-    if self:isEmpty() then
+    if self:is_empty() then
         printError("Error: Stack is empty!")
         return
     end
@@ -28,14 +28,14 @@ end
 
 function Stack:top()
     local size = self:size()
-    if self:isEmpty() then
+    if self:is_empty() then
         printError("Error: Stack is empty!")
         return
     end
     return self.stack_table[size]
 end
 
-function Stack:isEmpty()
+function Stack:is_empty()
     local size = self:size()
     if size == 0 then
         return true
@@ -56,7 +56,7 @@ end
 function Stack:printElement()
     local size = self:size()
 
-    if self:isEmpty() then
+    if self:is_empty() then
         -- printError("Error: Stack is empty!")
         return
     end

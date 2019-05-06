@@ -105,25 +105,25 @@ function str2cidr(str)
 	local cidr_list=stdnse.strsplit("/",str)
 	local cidr={}
 	if #cidr_list ~= 2 then
-		cidr['ip']=str
-		cidr['fpx']=32
+		cidr['net']=str
+		cidr['pfx']=32
 		return cidr
 	end
-	cidr['ip']=cidr_list[1]
-	cidr['fpx']=tonumber(cidr_list[2])
-	-- local number_ip = ipOps.todword(cidr['ip'])
+	cidr['net']=cidr_list[1]
+	cidr['pfx']=tonumber(cidr_list[2])
+	-- local number_ip = ipOps.todword(cidr['net'])
 	-- print(number_ip)
 	-- local a=3
 	-- print(bit.lshift(a,2))
 	-- print(bit.band(a,2))
 	-- a = (a << 2)
 	-- print(a)
-	local ip=ipOps.ip_to_bin(cidr['ip'])
-	-- print("get cidr:",cidr['ip'],cidr['fpx'])
-	if not cidr['fpx'] or ( cidr['fpx'] < 0 ) or ( cidr['fpx'] > #ip  ) then
+	local ip=ipOps.ip_to_bin(cidr['net'])
+	-- print("get cidr:",cidr['net'],cidr['pfx'])
+	if not cidr['pfx'] or ( cidr['pfx'] < 0 ) or ( cidr['pfx'] > #ip  ) then
 		print("Error: Invalid cidr prefix length.")
-		cidr['ip']=0
-		cidr['fpx']=0
+		cidr['net']=0
+		cidr['pfx']=0
 		return cidr
 	end
 	return cidr
@@ -162,7 +162,7 @@ end
 function HOSTADDR(ip,pfx)
 	local number_ip = ipOps.todword(ip)
 	if not number_ip then
-		print("illege ip number:",ip,pfx)
+		print("HOSTADDR:illege ip number:",ip,pfx)
 		return nil
 	end
 	local ip= bit.band(number_ip,(bit.rshift(0xffffffff,pfx)))
@@ -173,21 +173,31 @@ end
 function NETADDR(ip,pfx)
 	local number_ip = ipOps.todword(ip)
 	if not number_ip then
-		print("illege ip number:",ip,pfx)
+		print("NETADDR:illege ip number:",ip,pfx)
 		return nil
 	end
 	local ip= bit.band(number_ip,(bit.lshift(0xffffffff,(32-pfx))))
 	return ip 		--fastrace_fromdword(ip)
 	-- body
 end
-function IP_INC(ip)
-	local number_ip = ipOps.todword(ip)
-	if not number_ip then
-		print("illege ip number:",ip)
+function IP_INC(number_ip)
+	if not 794452736 then
+		print("IP_INC:illege ip number:",number_ip)
 		return nil
 	end
+	-- print("IP_INC:",number_ip)
 	number_ip=number_ip+1
-	return fastrace_fromdword(ip) 		--fastrace_fromdword(ip)
+	return fastrace_fromdword(number_ip) 		--fastrace_fromdword(ip)
+	-- body
+end
+function IP_DEC(number_ip)
+	-- local number_ip = ipOps.todword(ip)
+	if not number_ip then
+		print("IP_DEC:illege ip number:",number_ip)
+		return nil
+	end
+	number_ip=number_ip-1
+	return fastrace_fromdword(number_ip) 		--fastrace_fromdword(ip)
 	-- body
 end
 ---
@@ -219,7 +229,68 @@ get_first_last_ip = function(ip, prefix)
   local last  = ipOps.bin_to_ip(net .. ("1"):rep(#ip - prefix))
   return first, last
 end
+TRR2STRING = {
+    "No result",
+    "Got there",
+    "Unreachable",
+    "Timeout",
+    "Reach max hop",
+    "Route loop",
+    "Fake source address",
+    "End by design"
+}
+print_tr = function(tr)
+    local i
+    print("Target ",tr['dst'] , "hop",tr['start'],"-",tr['end'] ,TRR2STRING[tr['rst']])
+    if (tr['start'] <= 0 or tr['end'] <= 0) then
+        return
+    end 
+    for i= tr['start'],tr['end'] do
+    	print(i,tr['hop'][i])
+    end
+end
+PTYPE2STRING = {
+    "I-EQ",
+    "TACK",
+    "TSYN",
+    "TFIN",
+    "UBIG",
+    "TOUT",
+    "I-ER",
+    "TRST",
+    "TS&A",
+    "TR&A",
+    "I-TX",
+    "I-UN"
+}
+ptype2str = function(pack_type)
+    if (pack_type > NR_PK_TYPE) then
+        return "NULL"
+    else
+    	if IS_UNREACH(pack_type) ==1 then
+    		return PTYPE2STRING[RPK_UNREACH]
+    	else
+    		return PTYPE2STRING[pack_type]
+    	end
+    end
+end
 
+print_ri = function(pi,rpk_type,from)
+	io.write(">",pi['ttl'],pi['dst'],":",pi['dport'],ptype2str(pi['type']))
+	if rpk_type==0 then
+		print("- error")
+		return
+	end
+	if rpk_type==RPK_TIMEOUT then
+		print("- *")
+		return 
+	end
+	io.write("- ",from,ptype2str(rpk_type))
+	if IS_UNREACH(rpk_type) then
+		io.write(rpk_type-RPK_UNREACH)
+	end
+	print(" ms")
+end
 PROBING_TYPE_ARRAY	=	{
 	PPK_SYN,	PPK_UDPBIGPORT,	PPK_ICMPECHO,
 	PPK_SYN,	PPK_SYN,	PPK_SYN,
@@ -256,3 +327,7 @@ IP_HEAD_SIZE		=20
 ICMP_HEAD_SIZE		=8
 UDP_HEAD_SIZE		=8
 TCP_HEAD_SIZE		=20
+
+MAX_PREFIX_LEN 		= 30
+MIN_PREFIX_LEN 		= 20
+MIN_NO_NEW_PREFIX 	= 24

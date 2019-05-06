@@ -9,7 +9,7 @@ local stdnse = require "stdnse"
 local string = require "string"
 local table = require "table"
 local dns = require "dns"
-
+-- local io = require "io"
 require('base')
 require('prober')
 require('last_hop')
@@ -67,6 +67,7 @@ local function hopping(dst_ip,ttl,try)
 	pi['ttl']=ttl
 	pi['dst']=dst_ip
 	pi['src']=iface.address
+	pi['type']=send_packet_type
 	local rpk_type=0
 	local from
 	if send_packet_type==PPK_ICMPECHO then		--3
@@ -85,6 +86,9 @@ local function hopping(dst_ip,ttl,try)
 		print("probe type:PPK_UDPBIGPORT")
 		rpk_type, from=prober.send_udp_big_port(pi,send_l3_sock,iface.device)
 		-- print("probe result:rpk_type,from:",rpk_type,from)
+	end
+	if verbose == 1 then
+		print_ri(pi,rpk_type,from)
 	end
 	return rpk_type,from
 	-- body
@@ -107,7 +111,7 @@ local function reverse_traceroute(trace,cmptrace)
 	if trace['end'] > MAX_HOP then
 		trace['end'] = MAX_HOP
 	end
-	ttl=trace['end']
+	ttl=trace['end']	--trace->end = trace->start - 1;  trace->start = cmptrace->end;
 	while ttl ~=0 do
 		rpk_type,from=hopping(trace['dst'],ttl,try)
 		if rpk_type ==0 then
@@ -180,8 +184,8 @@ local function forward_traceroute(trace,cmptrace)
 	local timeouth=0
 	try=3					--更改发包类型,lua，table下标从0开始
 	if cmptrace then
-		if trace['start']==0 then
-			trace['start']=cmptrace['end']
+		if trace['start']==0 then 				--treetrace->forward_reverse->this
+			trace['start']=cmptrace['end']		--从cmptrace end处开始,继续增加ttl探测
 			compare_each_from=0
 		else
 			compare_each_from=1
@@ -193,7 +197,7 @@ local function forward_traceroute(trace,cmptrace)
 	while ttl <= MAX_HOP do
 		-- print("begin:",timeout,timeout_hops)
 		if timeout >=1 or timeout_hops>=1 then
-			-- try=GET_TRY(try)
+			try=GET_TRY(try)
 		end
 		-- print("begin hopping:",rpk_type,from)
 		rpk_type,from=hopping(trace['dst'],ttl,try)
@@ -202,18 +206,23 @@ local function forward_traceroute(trace,cmptrace)
 			print("forward_traceroute stop because rpk_type 0!")
 			return -1
 		end
-		-- if rpk_type==RPK_TIMEEXC then
-			
-		-- 	trace['hop'][ttl]=from
-		-- 	ttl=ttl+1
-		-- end
 		--超时未响应
 		if rpk_type==RPK_TIMEOUT then
 			timeout=timeout+1
 			print("*HOP:",ttl,"timeout:",timeout,timeout_hops)
-			if compare_each_from==1 and cmptrace ~=nil then
+			if compare_each_from == 0 and cmptrace ~=nil then
 				--TODO:近邻无应答结束技术 NNS
+				--1.如果cmptrace当前hop超时，那此hop也超时
+				--2.如果 cmptrace 以响应超时结束，此结果也是超时
+				--近邻无应答结束技术 NNS
+				if cmptrace['end'] == ttl and cmptrace['rst'] == TR_RESULT_TIMEOUT then
+					trace['hop'][ttl]=0
+					trace['end']=ttl
+					trace['rst']=TR_RESULT_TIMEOUT
+					return 1
+				end
 			end
+
 			if timeout==MAX_TIMEOUT_PER_HOP then	--连续3次超时
 				timeout=0
 				timeout_hops=timeout_hops+1
@@ -221,7 +230,7 @@ local function forward_traceroute(trace,cmptrace)
 				if timeout_hops>=MAX_TIMEOUT_HOPS then	--1
 					--Too many continuous timeout.
 					--Remain a router ZERO at the end of path.
-					trace['end']=ttl -- - MAX_TIMEOUT_HOPS+1
+					trace['end']=ttl - MAX_TIMEOUT_HOPS+1
 					trace['rst']=TR_RESULT_TIMEOUT
 					if timeouth>=1 then
 						print("TOH OK")
@@ -240,9 +249,9 @@ local function forward_traceroute(trace,cmptrace)
 		--/* Record response IP address. */
 		trace['hop'][ttl]=from
 		if rpk_type == RPK_TIMEEXC then
-			if ttl>2 and from ~= trace['hop'][ttl-2] then
+			if ttl>2 and from ~= trace['hop'][ttl-1] then 	--相邻两跳相同不算
 				local i
-				for i=trace['start'],ttl-2 do 		--从start到ttl-2 与from对比，查看是否一致
+				for i=trace['start'],ttl - 2 do 		--从start到ttl-2 与from对比，查看是否一致
 					if from==trace['hop'][i] then	--
 						trace['end']=ttl
 						trace['rst']=TR_RESULT_LOOP
@@ -259,6 +268,28 @@ local function forward_traceroute(trace,cmptrace)
 			end		--end if from == trace['dst']
 			if cmptrace ~= nil then
 				--TODO:treetrace
+				--trace->start==1,
+				if compare_each_from == 1 then
+					for i = cmptrace['start'] , cmptrace['end'] do
+						--ttl从1开始探测时，在from对应ttl时，发现与cmptrace一致的结果，
+						if from == cmptrace['hop'][i] then
+							trace['end'] = ttl
+							trace['rst'] = TR_RESULT_DESIGN
+							--TODO:right or not
+							for j = ttl + 1 , cmptrace['end'] - i + ttl  do 	--将i之后的结果，拷贝到trace中
+								trace['hop'][j] = cmptrace[hop][i+j-ttl]
+							end
+							return 1
+						end
+					end
+				else
+					--trace['start'] = cmptrace['end']
+					if cmptrace['rst'] == TR_RESULT_LOOP and cmptrace['end'] == ttl and cmptrace['hop'][ttl] == trace['hop'][ttl] then
+						trace['end'] = ttl
+						trace['rst'] = TR_RESULT_LOOP
+						return 1
+					end
+				end
 			end
 			print(">HOP:",ttl,"from:",from)
 			ttl=ttl+1
@@ -293,25 +324,182 @@ local function forward_traceroute(trace,cmptrace)
 	trace['rst']=TR_RESULT_MAXHOP
 	return 1
 end
+--检查路径是否循环
+function search_loop(trace)
+	local i,j
+	for i = (trace['start']+2) , trace['end'] do
+		if trace['hop'][i] == trace['hop'][i-1] then
+			-- print('')
+		else
+			j=i-2
+			while j >= trace['start'] do
+				if trace['hop'][i] == trace['hop'][j] then
+					trace['rst'] = TR_RESULT_LOOP
+					trace['end'] =i
+					return 1
+				end
+				j = j - 1
+			end--end while
+		end
+	end--end for
+	return 0
+end
+function forward_reverse(trace,fcmptrace,rcmptrace)
+	local result
+	local fend
+	if forward_traceroute(trace,fcmptrace) == -1 then
+		return -1
+	end
+	if trace['start'] ==1 then 		--fcmptrace end ==1
+		--/* NO less TTL value for reverse_traceroute(). */
+		return 1
+	end
+	result = trace['rst']
+	fend = trace['end']
+	trace['end'] = trace['start'] -1
 
+	if reverse_traceroute(trace,rcmptrace) ==-1 then 	--start=1 for reverse_traceroute
+		return -1
+	end
+	if trace['rst'] ~= TR_RESULT_DESIGN then
+		return 1
+	end
+	if result == TR_RESULT_TIMEOUT then
+		local i = fend 
+		while i>0 and trace['hop'][i] ==0 do 			--table begin from 1,找到第一个超时的，即为end
+			i=i-1
+		end
+		fend = i + 1
+	end
+	trace['rst'] = result
+	trace['end'] = fend
+	if result == TR_RESULT_LOOP or result == TR_RESULT_MAXHOP then
+		search_loop(trace)
+	end
+	return 1
+end
 local function normal_traceroute(dst_ip)
 	local trace={}
 	trace['dst']=dst_ip
 	trace['start']=1
 	forward_traceroute(trace,nil)
 end
+local function copy_tracehop(tracedst,tracesrc,ttls,ttle)
+	--copy from reverse_traceroute
+	for i=ttls,ttle do
+		tracedst['hop'][i] = tracesrc['hop'][i]
+	end
+	tracedst['start']=ttls
+end
+local function compare_endrouter(trace1,trace2)
+	if trace1['rst'] == TR_RESULT_DESIGN or trace2['rst'] == TR_RESULT_DESIGN then
+		return -1
+	end
+	if trace1['end'] < 2 then
+		return 0
+	end
+	if trace1['end'] == trace2['end'] then 
+		if trace1['hop'][trace1['end'] - 1] == trace2['hop'][trace2['end'] - 1] then
+			return 0
+		else
+			return 1
+		end
+	end
+	return 1
+	-- body
+end
 local function treetrace(cidr)
+	--newsr=(fpx => 24,
+	--		 trace =>(
+	--		 		dst => 192.168.121.1,
+	--		 		start => 1,
+	--		 		hop =>[],
+	--		 		end =>3,
+	--		 		rst =>1)
+	--		 )
+	--		)
 	local newsr = {}
 	local oldsr = {}
-	local s = Stack:new()
+	newsr['trace']={}
+	oldsr['trace']={}
 	if cidr['pfx']>=MAX_PREFIX_LEN then
-		if (cidr['pfx'] ~=32) and (HOSTADDR(cidr['ip'],cidr['fpx'])==0) then
-			cidr['ip']=IP_INC(cidr['ip'])
+		if (cidr['pfx'] ~=32) and (HOSTADDR(cidr['net'],cidr['pfx'])==0) then
+			cidr['net']=IP_INC(cidr['net'])
 		end
-		normal_traceroute(cidr['ip'])
+		normal_traceroute(cidr['net'])
+		return
+	end
+	newsr['pfx']=cidr['pfx']
+	newsr['trace']['dst']=IP_INC(NETADDR(cidr['net'],cidr['pfx']))
+	newsr['trace']['start'] = 1
+	print(newsr['trace']['dst'],newsr['trace']['start'])
+
+	if forward_traceroute(newsr['trace'],nil)==-1 then
+		newsr=nil
 		return
 	end
 
+	local s = Stack:new()
+	s:push(newsr)
+	while s:is_empty() == false do
+		oldsr = s:top()
+		-- print('addr:',oldsr,newsr)
+		newsr = {} 		--赋为空后，地址改变，不再和oldsr指向同一地址
+		-- print('addr:',oldsr,newsr)
+		-- for k,v in pairs(oldsr) do
+		-- 	print(k,v)
+		-- 	if k=='trace' then
+		-- 		for i,j in pairs(v) do
+		-- 			print(i,j)
+		-- 		end
+		-- 	end
+		-- end
+		newsr['trace']={}
+		if HOSTADDR(oldsr['trace']['dst'],oldsr['pfx'])  == 1 then
+			newsr['trace']['dst'] = IP_DEC(NETADDR(oldsr['trace']['dst'],oldsr['pfx']) + bit.rshift(0xffffffff,oldsr['pfx']))
+		else
+			newsr['trace']['dst'] = IP_INC(NETADDR(oldsr['trace']['dst'],oldsr['pfx']))
+		end 
+		newsr['trace']['start'] = 0			--/* `start' waiting to be set by `oldsr'. */
+		print('new ip in stack:',newsr['trace']['dst'])
+		-- s:pop()
+		if forward_reverse(newsr['trace'],oldsr['trace'],oldsr['trace']) == -1 then
+			s:clear()
+			return
+		end
+		copy_tracehop(newsr['trace'],oldsr['trace'],1,newsr['trace']['start']-1)
+		if newsr['trace']['rst'] == TR_RESULT_LOOP or newsr['trace']['rst'] ==TR_RESULT_MAXHOP then
+			search_loop(newsr['trace'])
+		end
+		--比较末跳路由，如果一致，则认为在同一子网
+		if compare_endrouter(newsr['trace'],oldsr['trace']) == 0 and oldsr['pfx'] >= MIN_PREFIX_LEN then
+			s:pop()
+			print("SAME SUBNET:",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx'])),oldsr['pfx'])
+			print_tr(oldsr['trace'])
+			oldsr={}
+			newsr={}
+			goto TREETRACE_WHILE
+		end
+		--TODO: Min non-new netmark prefix lenth. 
+
+		if (oldsr['pfx'] + 1) >= MAX_PREFIX_LEN then
+			s:pop()
+			print("SUBNET max prefix lenth:",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
+			print_tr(oldsr['trace'])
+			--TODO:last_hop_test
+			print("SUBNET max prefix lenth:",fastrace_fromdword(NETADDR(newsr['trace']['dst'],newsr['pfx']+1)),newsr['pfx']+1)
+			print_tr(newsr['trace'])
+			oldsr={}
+			newsr={}
+			goto TREETRACE_WHILE
+		end
+		oldsr['pfx']=oldsr['pfx']+1
+		newsr['pfx']=oldsr['pfx']
+		s:push(newsr)
+		print("Stack PUSH",newsr['trace']['dst'],newsr['pfx'])
+		::TREETRACE_WHILE::
+	end --end for while
+	s:clear()
 end
 
 local function last_hop(dst_ip,iface,result)
@@ -320,6 +508,9 @@ local function last_hop(dst_ip,iface,result)
 	last_hop_main(dst_ip,iface)
 	print('end:',dst_ip)
 	last_hop_condvar "signal"
+end
+local function test(point)
+	point['a']=1
 end
 action=function()
 	print("__________________")
@@ -340,7 +531,15 @@ action=function()
 	end
 
 	local prober_type=stdnse.get_script_args("type")	--默认traceroute
+	verbose=stdnse.get_script_args("verbose")
 
+	if verbose ~=nil then
+		if verbose ~= 1 and verbose ~= 0 then
+			return fail("error:参数错误")
+		end
+	else
+		verbose=0
+	end
 	if prober_type =='last_hop' then
 		if dst_ip then
 			local ip, err = ipOps.expand_ip(dst_ip)
@@ -420,19 +619,24 @@ action=function()
 	--调用last_hop.lua
 	
 	-- normal_traceroute(dst_ip)
+	-- local tp={}
+	-- tp['point']={}
+	-- test(tp['point'])
+	-- print(tp['point']['a'])
+
 	if dst_ip then
 		local cidr = str2cidr(dst_ip)
-		print(cidr['ip'],cidr['fpx'])
-		local temp, err = ipOps.expand_ip(cidr['ip'])
+		print(cidr['net'],cidr['pfx'])
+		local temp, err = ipOps.expand_ip(cidr['net'])
 		if err then
-			print("error:illege ip",cidr['ip'])
+			print("error:illege ip",cidr['net'])
 			return true
 		end
-		print(HOSTADDR(cidr['ip'],cidr['fpx']))
-		print(NETADDR(cidr['ip'],cidr['fpx']))
-		if cidr['fpx']>=32 then
-			normal_traceroute(cidr['ip'])
-		elseif cidr['fpx'] >=1 then
+		-- print(HOSTADDR(cidr['net'],cidr['pfx']))
+		-- print(NETADDR(cidr['net'],cidr['pfx']))
+		if cidr['pfx']>=32 then
+			normal_traceroute(cidr['net'])
+		elseif cidr['pfx'] >=1 then
 			treetrace(cidr)
 		else
 			print("error cidr format:",dst_ip)
@@ -441,20 +645,20 @@ action=function()
 		for line in io.lines(ip_file) do
 			local ip=stdnse.strsplit(" ", line)
 			local cidr = str2cidr(ip[1])
-			print(cidr['ip'],cidr['fpx'])
-			local temp, err = ipOps.expand_ip(cidr['ip'])
+			-- print(cidr['net'],cidr['pfx'])
+			local temp, err = ipOps.expand_ip(cidr['net'])
 			if not err then
-				print(HOSTADDR(cidr['ip'],cidr['fpx']))
-				print(NETADDR(cidr['ip'],cidr['fpx']))
-				if cidr['fpx']>=32 then
-					normal_traceroute(cidr['ip'])
-				elseif cidr['fpx'] >=1 then
+				-- print(HOSTADDR(cidr['net'],cidr['pfx']))
+				-- print(NETADDR(cidr['net'],cidr['pfx']))
+				if cidr['pfx']>=32 then
+					normal_traceroute(cidr['net'])
+				elseif cidr['pfx'] >=1 then
 					treetrace(cidr)
 				else
-					print("error cidr format:",ip[1],cidr['ip'],cidr['fpx'])
+					print("error cidr format:",ip[1],cidr['net'],cidr['pfx'])
 				end
 			else
-				print("error:illege ip",cidr['ip'])
+				print("error:illege ip",cidr['net'])
 			end
 		end--end for
 	else

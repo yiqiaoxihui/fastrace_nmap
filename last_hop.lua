@@ -36,7 +36,8 @@ local function icmp_pu_listener(send_l3_sock,signal,ip,iface)
 			signal['status']=1
 			signal['icmp_pu']=1
 			local l3_icmp_pu_packet = packet.Packet:new(l3_icmp_pu_data, #l3_icmp_pu_data)
-			print("icmp pu:",ip,l3_icmp_pu_packet.ip_src,l3_icmp_pu_packet.ip_dst)
+			--TODO:Need
+			-- print("icmp pu:",ip,l3_icmp_pu_packet.ip_src,l3_icmp_pu_packet.ip_dst)
 			local raw_sender_data_in_l3_icmp_pu_packet=l3_icmp_pu_data:sub(l3_icmp_pu_packet.icmp_payload_offset+1)
 			--print("icmp payload size:",#raw_sender_data_in_l3_icmp_pu_packet)
 			local raw_sender_packet_in_l3_icmp_pu_packet=packet.Packet:new(raw_sender_data_in_l3_icmp_pu_packet,#raw_sender_data_in_l3_icmp_pu_packet)
@@ -54,7 +55,8 @@ local function icmp_pu_listener(send_l3_sock,signal,ip,iface)
 				left_ttl=64-raw_sender_packet_in_l3_icmp_pu_packet.ip_ttl
 			end
 			--print("icmp port unreachable to get left_ttl value:",raw_sender_packet_in_l3_icmp_pu_packet.ip_ttl)
-			print(left_ttl+1,"set new ttl by icmp port unreachable")
+			--TODO
+			-- print(left_ttl+1,"set new ttl by icmp port unreachable")
 			--print("send new packet to get last hop...")
 			raw_sender_packet_in_l3_icmp_pu_packet:ip_set_ttl(left_ttl)
 			---print("packet.buf len:",#raw_sender_packet_in_l3_icmp_pu_packet.buf)
