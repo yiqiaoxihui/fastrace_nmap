@@ -241,12 +241,12 @@ TRR2STRING = {
 }
 print_tr = function(tr)
     local i
-    print("Target ",tr['dst'] , "hop",tr['start'],"-",tr['end'] ,TRR2STRING[tr['rst']])
+    io.write("Target ",tr['dst'] , " hop ",tr['start']," - ",tr['end'] ," ",TRR2STRING[tr['rst']+1],"\n") 	--加1 table从1开始
     if (tr['start'] <= 0 or tr['end'] <= 0) then
         return
     end 
     for i= tr['start'],tr['end'] do
-    	print(i,tr['hop'][i])
+    	io.write("~ ",i," ",tr['hop'][i],"\n")
     end
 end
 PTYPE2STRING = {
@@ -275,21 +275,21 @@ ptype2str = function(pack_type)
     end
 end
 
-print_ri = function(pi,rpk_type,from)
-	io.write(">",pi['ttl'],pi['dst'],":",pi['dport'],ptype2str(pi['type']))
+print_ri = function(pi,rpk_type,from,rtt,reply_ttl)
+	io.write("> ",pi['ttl']," ",pi['dst'],":",pi['dport']," ",ptype2str(pi['type']))
 	if rpk_type==0 then
-		print("- error")
+		print(" - error")
 		return
 	end
 	if rpk_type==RPK_TIMEOUT then
-		print("- *")
+		print(" - *")
 		return 
 	end
-	io.write("- ",from,ptype2str(rpk_type))
-	if IS_UNREACH(rpk_type) then
-		io.write(rpk_type-RPK_UNREACH)
+	io.write(" - ",from," ",ptype2str(rpk_type))
+	if IS_UNREACH(rpk_type) == 1 then
+		io.write(" ",rpk_type-RPK_UNREACH)
 	end
-	print(" ms")
+	io.write(" ",reply_ttl," ",rtt," ms\n")
 end
 PROBING_TYPE_ARRAY	=	{
 	PPK_SYN,	PPK_UDPBIGPORT,	PPK_ICMPECHO,
@@ -331,3 +331,5 @@ TCP_HEAD_SIZE		=20
 MAX_PREFIX_LEN 		= 30
 MIN_PREFIX_LEN 		= 20
 MIN_NO_NEW_PREFIX 	= 24
+
+VERBOSE				=0

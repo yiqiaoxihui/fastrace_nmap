@@ -9,6 +9,7 @@ local stdnse = require "stdnse"
 local string = require "string"
 local table = require "table"
 local dns = require "dns"
+-- local datetime = require "datetime"
 -- local io = require "io"
 require('base')
 require('prober')
@@ -68,29 +69,33 @@ local function hopping(dst_ip,ttl,try)
 	pi['dst']=dst_ip
 	pi['src']=iface.address
 	pi['type']=send_packet_type
+	pi['rtt']=0
+	pi['repy_ttl']=0
 	local rpk_type=0
 	local from
+	local rtt
+	local reply_ttl
 	if send_packet_type==PPK_ICMPECHO then		--3
-		print("probe type:PPK_ICMPECHO")
-		rpk_type, from=prober.send_icmp_echo(pi,send_l3_sock,iface.device)
+		---print("probe type:PPK_ICMPECHO")
+		rpk_type, from,rtt,reply_ttl=prober.send_icmp_echo(pi,send_l3_sock,iface.device)
 	elseif send_packet_type==PPK_ACK then
-		print("probe type:PPK_TCP_ACK")	--效果不佳
-		rpk_type, from=prober.send_tcp_ack(pi,send_l3_sock,iface.device)
+		---print("probe type:PPK_TCP_ACK")	--效果不佳
+		rpk_type, from,rtt,reply_ttl=prober.send_tcp_ack(pi,send_l3_sock,iface.device)
 	elseif send_packet_type==PPK_SYN then
-		print("probe type:PPK_TCP_SYN")
-		rpk_type, from=prober.send_tcp_syn(pi,send_l3_sock,iface.device)
+		---print("probe type:PPK_TCP_SYN")
+		rpk_type, from,rtt,reply_ttl=prober.send_tcp_syn(pi,send_l3_sock,iface.device)
 	elseif send_packet_type==PPK_FIN then
-		print("probe type:PPK_TCP_FIN")	--效果很差
-		rpk_type, from=prober.send_tcp_fin(pi,send_l3_sock,iface.device)
+		---print("probe type:PPK_TCP_FIN")	--效果很差
+		rpk_type, from,rtt,reply_ttl=prober.send_tcp_fin(pi,send_l3_sock,iface.device)
 	elseif send_packet_type==PPK_UDPBIGPORT then
-		print("probe type:PPK_UDPBIGPORT")
-		rpk_type, from=prober.send_udp_big_port(pi,send_l3_sock,iface.device)
+		---print("probe type:PPK_UDPBIGPORT")
+		rpk_type, from,rtt,reply_ttl=prober.send_udp_big_port(pi,send_l3_sock,iface.device)
 		-- print("probe result:rpk_type,from:",rpk_type,from)
 	end
-	if verbose == 1 then
-		print_ri(pi,rpk_type,from)
+	if VERBOSE == 1 then
+		print_ri(pi,rpk_type,from,rtt,reply_ttl)
 	end
-	return rpk_type,from
+	return rpk_type,from,rtt,reply_ttl
 	-- body
 end
 
@@ -106,6 +111,8 @@ local function reverse_traceroute(trace,cmptrace)
 	local code					--ICMP错误代码
 	local from					--探测回复的源ip
 	local timeout=0				--探测超时计数器
+	local rtt
+	local reply_ttl
 	try =3
 	trace['rst']=0
 	if trace['end'] > MAX_HOP then
@@ -113,12 +120,14 @@ local function reverse_traceroute(trace,cmptrace)
 	end
 	ttl=trace['end']	--trace->end = trace->start - 1;  trace->start = cmptrace->end;
 	while ttl ~=0 do
-		rpk_type,from=hopping(trace['dst'],ttl,try)
+		rpk_type,from,rtt,reply_ttl=hopping(trace['dst'],ttl,try)
+		trace['rtt']=rtt
+		trace['reply_ttl']=reply_ttl
 		if rpk_type ==0 then
 			return -1
 		end
 		if rpk_type == RPK_TIMEOUT then
-			print("*HOP:",ttl,"timeout:",timeout)
+			---print("*HOP:",ttl,"timeout:",timeout)
 			trace['hop'][ttl]=0
 			-- ttl=ttl-1
 			goto reverse_hopping_begin
@@ -126,16 +135,25 @@ local function reverse_traceroute(trace,cmptrace)
 		timeout=0
 		trace['hop'][ttl] = from
 		if rpk_type ~= RPK_TIMEEXC then
-			if IS_UNREACH(rpk_type) then
+			if IS_UNREACH(rpk_type) == 1 then 		--0 and 1 for lua is true
 				code=rpk_type - RPK_UNREACH
 				if code ~= ICMP_PROT_UNREACH and code ~= ICMP_PORT_UNREACH then
 					trace['rst'] = TR_RESULT_UNREACH
+		        	if VERBOSE == 1 then
+		        		print("reverse_traceroute NOT_RPK_TIMEEXC IS_UNREACH TR_RESULT_UNREACH")
+		        	end
 				else
-					print(">HOP:",ttl,"get target:",from)
+					---print(">HOP:",ttl,"get target:",from)
 					trace['rst'] = TR_RESULT_GOTTHERE
+		        	if VERBOSE == 1 then
+		        		print("reverse_traceroute NOT_RPK_TIMEEXC IS_UNREACH ICMP_PROT_UNREACH or ICMP_PORT_UNREACH")
+		        	end
 				end
 			else
-				print(">HOP:",ttl,"get target:",from)
+				---print(">HOP:",ttl,"get target:",from)
+	        	if VERBOSE == 1 then
+	        		print("reverse_traceroute NOT_RPK_TIMEEXC NOT_IS_UNREACH")
+	        	end
 				trace['rst'] = TR_RESULT_GOTTHERE
 			end
             --/* If `ttl' isn't equal to `trace->end', it means:
@@ -143,24 +161,29 @@ local function reverse_traceroute(trace,cmptrace)
             -- * finished return packet. This may be caused by a too large 
             -- * end TTL value or Amazing! We change end TTL value
             -- */
-            trace['end']=ttl;
-            -- ttl=ttl-1
+            trace['end']=ttl
             goto reverse_hopping_begin
         end
-        print(">HOP:",ttl,"from:",from)
+        ---print(">HOP:",ttl,"from:",from)
         --错误的报文
         if from == trace['dst'] then
-        	print("!TR_RESULT_FAKE:",ttl,"from:",from)
+        	---print("!TR_RESULT_FAKE:",ttl,"from:",from)
         	trace['end'] = ttl
         	trace['rst'] = TR_RESULT_FAKE
         	-- ttl=ttl-1
+        	if VERBOSE == 1 then
+        		print("reverse_traceroute TR_RESULT_FAKE")
+        	end
         	goto reverse_hopping_begin
         end
         if cmptrace ~= nil and cmptrace['start'] <= ttl and cmptrace['end'] >= ttl and cmptrace['hop'][ttl] == trace['hop'][ttl] then
         	trace['start'] = ttl
 			if trace['rst'] == 0 then		--仅当没有TR_RESULT_GOTTHERE和TR_RESULT_FAKE
-				print("TR_RESULT_DESIGN:",ttl,"from:",from)
+				---print("TR_RESULT_DESIGN:",ttl,"from:",from)
 				trace['rst'] = TR_RESULT_DESIGN
+			end
+			if VERBOSE == 1 then
+				print("reverse_traceroute BNP ,current",ttl,"cmptrace start,end ttl:",cmptrace['start'],cmptrace['end'],"rst:",trace['rst'])
 			end
 			return 1
 		end
@@ -182,6 +205,8 @@ local function forward_traceroute(trace,cmptrace)
 	local timeout_hops=0		--hop超时计数器，意思是连续有timeout_hops跳未响应，即退出
 	local compare_each_from=0	--
 	local timeouth=0
+	local rtt
+	local reply_ttl
 	try=3					--更改发包类型,lua，table下标从0开始
 	if cmptrace then
 		if trace['start']==0 then 				--treetrace->forward_reverse->this
@@ -193,23 +218,25 @@ local function forward_traceroute(trace,cmptrace)
 	end
 	ttl=trace['start']
 	trace['hop']={}
-	print("forward_traceroute:")
+	---print("forward_traceroute:")
 	while ttl <= MAX_HOP do
 		-- print("begin:",timeout,timeout_hops)
 		if timeout >=1 or timeout_hops>=1 then
 			try=GET_TRY(try)
 		end
 		-- print("begin hopping:",rpk_type,from)
-		rpk_type,from=hopping(trace['dst'],ttl,try)
+		rpk_type,from,rtt,reply_ttl=hopping(trace['dst'],ttl,try)
+		trace['rtt']=rtt
+		trace['reply_ttl']=reply_ttl
 		-- print("hopping:",rpk_type,from)
 		if rpk_type==0 then
-			print("forward_traceroute stop because rpk_type 0!")
+			---print("forward_traceroute stop because rpk_type 0!")
 			return -1
 		end
 		--超时未响应
 		if rpk_type==RPK_TIMEOUT then
 			timeout=timeout+1
-			print("*HOP:",ttl,"timeout:",timeout,timeout_hops)
+			---print("*HOP:",ttl,"timeout:",timeout,timeout_hops)
 			if compare_each_from == 0 and cmptrace ~=nil then
 				--TODO:近邻无应答结束技术 NNS
 				--1.如果cmptrace当前hop超时，那此hop也超时
@@ -219,6 +246,9 @@ local function forward_traceroute(trace,cmptrace)
 					trace['hop'][ttl]=0
 					trace['end']=ttl
 					trace['rst']=TR_RESULT_TIMEOUT
+					if VERBOSE == 1 then
+						print("NNS forward_traceroute")
+					end
 					return 1
 				end
 			end
@@ -235,7 +265,10 @@ local function forward_traceroute(trace,cmptrace)
 					if timeouth>=1 then
 						print("TOH OK")
 					end
-					print("!TR_RESULT_TIMEOUT:",ttl,"timeout:",timeout,timeout_hops)
+					if VERBOSE == 1 then
+						print("forward_traceroute TR_RESULT_TIMEOUT ttl:",ttl,"timeout_hops:",timeout_hops)
+					end
+					---print("!TR_RESULT_TIMEOUT:",ttl,"timeout:",timeout,timeout_hops)
 					return 1
 				end		--end timeout_hops==MAX_TIMEOUT_HOPS
 				ttl=ttl+1
@@ -255,13 +288,16 @@ local function forward_traceroute(trace,cmptrace)
 					if from==trace['hop'][i] then	--
 						trace['end']=ttl
 						trace['rst']=TR_RESULT_LOOP
-						print("TR_RESULT_LOOP:",ttl,"from:",from)
+						if VERBOSE == 1 then
+							print("forward_traceroute TR_RESULT_LOOP ")
+						end
+						---print("TR_RESULT_LOOP:",ttl,"from:",from)
 						return 1
 					end
 				end
 			end		--end if ttl>2 and from ~= trace['hop'][ttl-2]
 			if from == trace['dst'] then		--生存时间超时，却是目标发送的
-				print("!TR_RESULT_FAKE:",ttl,"from:",from)
+				---print("!TR_RESULT_FAKE:",ttl,"from:",from)
 				trace['end']=ttl
 				trace['rst']=TR_RESULT_FAKE
 				return 1
@@ -275,6 +311,9 @@ local function forward_traceroute(trace,cmptrace)
 						if from == cmptrace['hop'][i] then
 							trace['end'] = ttl
 							trace['rst'] = TR_RESULT_DESIGN
+							if VERBOSE == 1 then
+								print("forward_traceroute TR_RESULT_DESIGN compare_each_from,current ttl:",ttl,"cmptrace hop:",i)
+							end
 							--TODO:right or not
 							for j = ttl + 1 , cmptrace['end'] - i + ttl  do 	--将i之后的结果，拷贝到trace中
 								trace['hop'][j] = cmptrace[hop][i+j-ttl]
@@ -287,11 +326,14 @@ local function forward_traceroute(trace,cmptrace)
 					if cmptrace['rst'] == TR_RESULT_LOOP and cmptrace['end'] == ttl and cmptrace['hop'][ttl] == trace['hop'][ttl] then
 						trace['end'] = ttl
 						trace['rst'] = TR_RESULT_LOOP
+						if VERBOSE == 1 then
+							print("forward_traceroute TR_RESULT_LOOP by cmptrace")
+						end
 						return 1
 					end
 				end
 			end
-			print(">HOP:",ttl,"from:",from)
+			---print(">HOP:",ttl,"from:",from)
 			ttl=ttl+1
 			--goto begin
 			goto hopping_begin
@@ -302,6 +344,9 @@ local function forward_traceroute(trace,cmptrace)
 			if code ~=  ICMP_PROT_UNREACH  and  code ~= ICMP_PORT_UNREACH then
 				trace['end'] = ttl
 				trace['rst'] = TR_RESULT_UNREACH
+				if VERBOSE == 1 then
+					print("forward_traceroute TR_RESULT_UNREACH return")
+				end
 				return 1
 			end
 		end	--end if(is_unreach(rpk_type))
@@ -311,7 +356,7 @@ local function forward_traceroute(trace,cmptrace)
 		do
 			trace['end']=ttl
 			trace['rst']=TR_RESULT_GOTTHERE
-			print(">HOP:",ttl,"get target:",from)
+			---print(">HOP:",ttl,"get target:",from)
 			return 1
 		end
 		-- if rpk_type==RPK_ICMPECHO then
@@ -322,6 +367,9 @@ local function forward_traceroute(trace,cmptrace)
 	end
 	trace['end']=MAX_HOP
 	trace['rst']=TR_RESULT_MAXHOP
+	if VERBOSE == 1 then
+		print("forward_traceroute MAX_HOP return")
+	end
 	return 1
 end
 --检查路径是否循环
@@ -409,6 +457,7 @@ local function compare_endrouter(trace1,trace2)
 	-- body
 end
 local function treetrace(cidr)
+	-- print("verbose:",VERBOSE)
 	--newsr=(fpx => 24,
 	--		 trace =>(
 	--		 		dst => 192.168.121.1,
@@ -432,8 +481,10 @@ local function treetrace(cidr)
 	newsr['pfx']=cidr['pfx']
 	newsr['trace']['dst']=IP_INC(NETADDR(cidr['net'],cidr['pfx']))
 	newsr['trace']['start'] = 1
-	print(newsr['trace']['dst'],newsr['trace']['start'])
-
+	-- print(newsr['trace']['dst'],newsr['trace']['start'])
+	if VERBOSE == 1 then
+		io.write("Fastrace ",newsr['trace']['dst'],"/",newsr['pfx']," at ",os.date("%Y-%m-%d %H:%M:%S"),"\n")
+	end
 	if forward_traceroute(newsr['trace'],nil)==-1 then
 		newsr=nil
 		return
@@ -461,8 +512,11 @@ local function treetrace(cidr)
 			newsr['trace']['dst'] = IP_INC(NETADDR(oldsr['trace']['dst'],oldsr['pfx']))
 		end 
 		newsr['trace']['start'] = 0			--/* `start' waiting to be set by `oldsr'. */
-		print('new ip in stack:',newsr['trace']['dst'])
-		-- s:pop()
+		if VERBOSE == 1 then 
+			io.write('get oldsr on top stack:',oldsr['trace']['dst'],"/",oldsr['pfx'],"\n")
+			io.write('get newsr by oldsr:',newsr['trace']['dst'],"/",oldsr['pfx'],"\n")
+			io.write("Fastrace ",newsr['trace']['dst'],"/",oldsr['pfx']," at ",os.date("%Y-%m-%d %H:%M:%S"),"\n")
+		end
 		if forward_reverse(newsr['trace'],oldsr['trace'],oldsr['trace']) == -1 then
 			s:clear()
 			return
@@ -487,7 +541,7 @@ local function treetrace(cidr)
 			print("SUBNET max prefix lenth:",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
 			print_tr(oldsr['trace'])
 			--TODO:last_hop_test
-			print("SUBNET max prefix lenth:",fastrace_fromdword(NETADDR(newsr['trace']['dst'],newsr['pfx']+1)),newsr['pfx']+1)
+			print("SUBNET max prefix lenth:",fastrace_fromdword(NETADDR(newsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
 			print_tr(newsr['trace'])
 			oldsr={}
 			newsr={}
@@ -531,15 +585,20 @@ action=function()
 	end
 
 	local prober_type=stdnse.get_script_args("type")	--默认traceroute
-	verbose=stdnse.get_script_args("verbose")
+	-- verbose=0
+	VERBOSE=stdnse.get_script_args("verbose")
 
-	if verbose ~=nil then
-		if verbose ~= 1 and verbose ~= 0 then
-			return fail("error:参数错误")
+	if VERBOSE ~=nil then
+		if VERBOSE ~= '1' and VERBOSE ~= '0' then
+			return print("error:verbose param error",VERBOSE)
+		else
+			VERBOSE=tonumber(VERBOSE)
 		end
 	else
-		verbose=0
+		VERBOSE=0
 	end
+	print("verbose:",VERBOSE)
+	-- VERBOSE=1
 	if prober_type =='last_hop' then
 		if dst_ip then
 			local ip, err = ipOps.expand_ip(dst_ip)

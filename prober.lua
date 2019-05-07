@@ -13,6 +13,8 @@ prober={}
 function prober.send_icmp_echo(pi,send_l3_sock,device)
 	local rpk_type			--返回包类型
 	local from 				--返回包ip
+	local rtt 				--往返时延
+	local reply_ttl 		--回包中ttl
 	local echo_seq=math.random(0x0, 0xffff)
 	local echo_id=math.random(0x0, 0xffff)
 	-- echo_seq=1
@@ -37,27 +39,30 @@ function prober.send_icmp_echo(pi,send_l3_sock,device)
 	ip:build_icmp_header()
 	ip:build_ip_packet()
 	ip:ip_set_ttl(pi['ttl'])
+	local start_time,end_time
+	start_time=stdnse.clock_ms()
 	send_l3_sock:ip_send(ip.buf)
-	
+
 	local status,len,l2_icmp,l3_icmp,time=icmp_rec_socket:pcap_receive()
 	if status then
+		end_time=stdnse.clock_ms()
+		rtt=end_time - start_time
 		-- print("get icmp packet back")
-		local icmp_rpk_packet = packet.Packet:new(l3_icmp, #l3_icmp)
-		from=icmp_rpk_packet['ip_src']
+		local l3_rpk_packet = packet.Packet:new(l3_icmp, #l3_icmp)
+		reply_ttl=l3_rpk_packet.ip_ttl
+		from=l3_rpk_packet['ip_src']
 		-- for k,v in pairs(icmp_timeexc_packet) do
 		-- 	print("ip:",k,v)
 		-- end
 		--rpk_type:PPK_ICMPECHO,RPK_ICMPECHO,RPK_UNREACH+code,RPK_TIMEEXC,0其他类型
-		rpk_type=parsepack.get_ptype_icmp(icmp_rpk_packet,#l3_icmp)
+		rpk_type=parsepack.get_ptype_icmp(l3_rpk_packet,#l3_icmp)
 		-- print(">HOP:",pi['ttl'],from)
-
 	else
 		-- print("!HOP:",pi['ttl'],"timeout")
 		rpk_type=RPK_TIMEOUT
-
 	end
 	icmp_rec_socket:close()
-	return rpk_type,from
+	return rpk_type,from,rtt,reply_ttl
 end
 --对udp,fastrace中探测包ip头部id为进程_pID,upd源端口为_SEQ
 --type:1.收到大端口回复PPK_UDPBIGPORT，提取id为0，序列号seq为源端口,程序搞反了？2.收到端口不可达RPK_UNREACH + ihp->code;，提取id为原始报文ip头部id,
@@ -65,6 +70,8 @@ end
 function prober.send_udp_big_port(pi,send_l3_sock,device)
 	local rpk_type			--返回包类型
 	local from 				--返回包ip
+	local rtt 				--往返时延
+	local reply_ttl 		--回包中ttl
 	local rec_socket=nmap.new_socket()
 	local hex_dst_ip=ipOps.todword(pi['dst'])
 	--接收：返回报文为探测目标发送的，且端口与探测包相反的报文
@@ -94,11 +101,16 @@ function prober.send_udp_big_port(pi,send_l3_sock,device)
     ip:udp_count_checksum()
     ip:ip_set_ttl(pi['ttl'])
     ip:ip_count_checksum()
+	local start_time,end_time
+	start_time=stdnse.clock_ms()
 	send_l3_sock:ip_send(ip.buf)
 	local status,len,l2_packet,l3_packet,time=rec_socket:pcap_receive()
 	if status then
 		-- print("get packet back")
+		end_time=stdnse.clock_ms()
+		rtt=end_time - start_time
 		local l3_rpk_packet = packet.Packet:new(l3_packet, #l3_packet)
+		reply_ttl=l3_rpk_packet.ip_ttl
 		from=l3_rpk_packet['ip_src']
 		--返回包为UDP包
 		if l3_rpk_packet['ip_p']==IPPROTO_UDP then
@@ -122,12 +134,14 @@ function prober.send_udp_big_port(pi,send_l3_sock,device)
 
 	end
 	rec_socket:close()
-	return rpk_type,from
+	return rpk_type,from,rtt,reply_ttl
 end
 
 function prober.send_tcp_syn(pi,send_l3_sock,device)
 	local rpk_type			--返回包类型
 	local from 				--返回包ip
+	local rtt 				--往返时延
+	local reply_ttl 		--回包中ttl
 	local tcp_seq=math.random(0x0, 0xefffffff)
 	local rec_socket=nmap.new_socket()
 	local hex_dst_ip=ipOps.todword(pi['dst'])
@@ -160,12 +174,15 @@ function prober.send_tcp_syn(pi,send_l3_sock,device)
     ip:tcp_count_checksum()
     ip:ip_set_ttl(pi['ttl'])
     ip:ip_count_checksum()
-
+	local start_time,end_time
+	start_time=stdnse.clock_ms()
 	send_l3_sock:ip_send(ip.buf)
 	local status,len,l2_packet,l3_packet,time=rec_socket:pcap_receive()
 	if status then
-		-- print("get packet back")
+		end_time=stdnse.clock_ms()
+		rtt=end_time - start_time
 		local l3_rpk_packet = packet.Packet:new(l3_packet, #l3_packet)
+		reply_ttl=l3_rpk_packet.ip_ttl
 		from=l3_rpk_packet['ip_src']
 		--返回包为TCP包
 		if l3_rpk_packet['ip_p']==IPPROTO_TCP then
@@ -187,12 +204,14 @@ function prober.send_tcp_syn(pi,send_l3_sock,device)
 
 	end
 	rec_socket:close()
-	return rpk_type,from
+	return rpk_type,from,rtt,reply_ttl
 end
 
 function prober.send_tcp_ack(pi,send_l3_sock,device)
 	local rpk_type			--返回包类型
 	local from 				--返回包ip
+	local rtt 				--往返时延
+	local reply_ttl 		--回包中ttl
 	local tcp_seq=math.random(0x0, 0xefffffff)
 	local rec_socket=nmap.new_socket()
 	local hex_dst_ip=ipOps.todword(pi['dst'])
@@ -225,12 +244,16 @@ function prober.send_tcp_ack(pi,send_l3_sock,device)
     ip:tcp_count_checksum()
     ip:ip_set_ttl(pi['ttl'])
     ip:ip_count_checksum()
-
+	local start_time,end_time
+	start_time=stdnse.clock_ms()
 	send_l3_sock:ip_send(ip.buf)
 	local status,len,l2_packet,l3_packet,time=rec_socket:pcap_receive()
 	if status then
-		-- print("get packet back")
+		end_time=stdnse.clock_ms()
+		rtt=end_time - start_time
 		local l3_rpk_packet = packet.Packet:new(l3_packet, #l3_packet)
+		reply_ttl=l3_rpk_packet.ip_ttl
+		-- print("get packet back")
 		from=l3_rpk_packet['ip_src']
 		--返回包为TCP包
 		if l3_rpk_packet['ip_p']==IPPROTO_TCP then
@@ -252,12 +275,14 @@ function prober.send_tcp_ack(pi,send_l3_sock,device)
 
 	end
 	rec_socket:close()
-	return rpk_type,from
+	return rpk_type,from,rtt,reply_ttl
 end
 
 function prober.send_tcp_fin(pi,send_l3_sock,device)
 	local rpk_type			--返回包类型
 	local from 				--返回包ip
+	local rtt 				--往返时延
+	local reply_ttl 		--回包中ttl
 	local tcp_seq=math.random(0x0, 0xefffffff)
 	local rec_socket=nmap.new_socket()
 	local hex_dst_ip=ipOps.todword(pi['dst'])
@@ -290,12 +315,16 @@ function prober.send_tcp_fin(pi,send_l3_sock,device)
     ip:tcp_count_checksum()
     ip:ip_set_ttl(pi['ttl'])
     ip:ip_count_checksum()
-
+	local start_time,end_time
+	start_time=stdnse.clock_ms()
 	send_l3_sock:ip_send(ip.buf)
 	local status,len,l2_packet,l3_packet,time=rec_socket:pcap_receive()
 	if status then
 		-- print("get packet back")
+		end_time=stdnse.clock_ms()
+		rtt=end_time - start_time
 		local l3_rpk_packet = packet.Packet:new(l3_packet, #l3_packet)
+		reply_ttl=l3_rpk_packet.ip_ttl
 		from=l3_rpk_packet['ip_src']
 		--返回包为TCP包
 		if l3_rpk_packet['ip_p']==IPPROTO_TCP then
@@ -317,7 +346,7 @@ function prober.send_tcp_fin(pi,send_l3_sock,device)
 
 	end
 	rec_socket:close()
-	return rpk_type,from
+	return rpk_type,from,rtt,reply_ttl
 end
 
 return prober
