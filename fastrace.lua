@@ -247,7 +247,7 @@ local function forward_traceroute(trace,cmptrace)
 					trace['end']=ttl
 					trace['rst']=TR_RESULT_TIMEOUT
 					if VERBOSE == 1 then
-						print("NNS forward_traceroute")
+						print("forward_traceroute NNS")
 					end
 					return 1
 				end
