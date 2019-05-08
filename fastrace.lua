@@ -16,6 +16,8 @@ require('prober')
 require('last_hop')
 require('unit_test')
 local Stack=require('stack')
+
+
 -- require('parsepack') in prober
 
 description = [[
@@ -146,13 +148,13 @@ local function reverse_traceroute(trace,cmptrace)
 					---print(">HOP:",ttl,"get target:",from)
 					trace['rst'] = TR_RESULT_GOTTHERE
 		        	if VERBOSE == 1 then
-		        		print("reverse_traceroute NOT_RPK_TIMEEXC IS_UNREACH ICMP_PROT_UNREACH or ICMP_PORT_UNREACH")
+		        		print("reverse_traceroute ,NOT RPK_TIMEEXC ,IS_UNREACH ,ICMP_PROT_UNREACH or ICMP_PORT_UNREACH, TR_RESULT_GOTTHERE")
 		        	end
 				end
 			else
 				---print(">HOP:",ttl,"get target:",from)
 	        	if VERBOSE == 1 then
-	        		print("reverse_traceroute NOT_RPK_TIMEEXC NOT_IS_UNREACH")
+	        		print("reverse_traceroute ,NOT RPK_TIMEEXC ,NOT IS_UNREACH ,TR_RESULT_GOTTHERE")
 	        	end
 				trace['rst'] = TR_RESULT_GOTTHERE
 			end
@@ -172,7 +174,7 @@ local function reverse_traceroute(trace,cmptrace)
         	trace['rst'] = TR_RESULT_FAKE
         	-- ttl=ttl-1
         	if VERBOSE == 1 then
-        		print("reverse_traceroute TR_RESULT_FAKE")
+        		print("reverse_traceroute ,TR_RESULT_FAKE")
         	end
         	goto reverse_hopping_begin
         end
@@ -183,7 +185,7 @@ local function reverse_traceroute(trace,cmptrace)
 				trace['rst'] = TR_RESULT_DESIGN
 			end
 			if VERBOSE == 1 then
-				print("reverse_traceroute BNP ,current",ttl,"cmptrace start,end ttl:",cmptrace['start'],cmptrace['end'],"rst:",trace['rst'])
+				io.write("reverse_traceroute BNP ,current: ",ttl," cmptrace start,end ttl: ",cmptrace['start']," ",cmptrace['end']," rst: ",trace['rst'],"\n")
 			end
 			return 1
 		end
@@ -253,11 +255,11 @@ local function forward_traceroute(trace,cmptrace)
 				end
 			end
 
-			if timeout==MAX_TIMEOUT_PER_HOP then	--连续3次超时
+			if timeout==MAX_TIMEOUT_PER_HOP then	--一跳上连续 MAX_TIMEOUT_PER_HOP 次超时
 				timeout=0
 				timeout_hops=timeout_hops+1
 				trace['hop'][ttl]=0
-				if timeout_hops>=MAX_TIMEOUT_HOPS then	--1
+				if timeout_hops>=MAX_TIMEOUT_HOPS then	--连续MAX_TIMEOUT_HOPS跳超时，退出，否则进行下一跳
 					--Too many continuous timeout.
 					--Remain a router ZERO at the end of path.
 					trace['end']=ttl - MAX_TIMEOUT_HOPS+1
@@ -409,7 +411,7 @@ function forward_reverse(trace,fcmptrace,rcmptrace)
 	if reverse_traceroute(trace,rcmptrace) ==-1 then 	--start=1 for reverse_traceroute
 		return -1
 	end
-	if trace['rst'] ~= TR_RESULT_DESIGN then
+	if trace['rst'] ~= TR_RESULT_DESIGN then 			--原因能是：在 reverse_traceroute 中到达目标 TR_RESULT_GOTTHERE
 		return 1
 	end
 	if result == TR_RESULT_TIMEOUT then
@@ -456,6 +458,51 @@ local function compare_endrouter(trace1,trace2)
 	return 1
 	-- body
 end
+local function get_new_link_node_number(trace)
+	local new_link=0
+	local new_node = 0
+	local link_key
+	if DEBUG == 1 then
+		print("^^^^^^^^^^^^^^^global_node^^^^^^^^^^^^^^^^^^")
+		for k,v in pairs(global_node) do
+			print("global_node:",k)
+		end
+		print("^^^^^^^^^^^^^^^global_node^^^^^^^^^^^^^^^^^^")
+		for k,v in pairs(global_link_hashmap) do
+			print("global_link_hashmap:",k)
+		end
+		print("***********new link node discovery************")
+	end
+	for i = trace['start'],trace['end']-1 do
+		if trace['hop'][i] ~= 0 and trace['hop'][i+1] ~= 0 then 					--中间node为 0 的略过
+			if ipOps.compare_ip(trace['hop'][i],'gt',trace['hop'][i+1]) == true then
+				link_key=trace['hop'][i+1]..'.'..trace['hop'][i]
+			else
+				link_key=trace['hop'][i]..'.'..trace['hop'][i+1]
+			end
+			if global_link_hashmap[link_key] == nil then
+				new_link= new_link + 1
+				global_link_hashmap[link_key] = 1
+				if DEBUG == 1 then
+					io.write('new link:',trace['hop'][i],' ~~~~~~~~~~~~~~~~ ',trace['hop'][i+1],"\n")
+				end
+				-- return 1
+			end
+		end
+		if trace['hop'][i] ~= 0 and global_node[trace['hop'][i]] == nil then
+			new_node = new_node + 1
+			global_node[trace['hop'][i]] = 1
+			if DEBUG == 1 then
+				io.write('new node:',trace['hop'][i],"\n")
+			end
+			-- return 1
+		end
+	end
+	if DEBUG == 1 then
+		print("***********new link node end************",new_link,new_node)
+	end
+	return new_link,new_node
+end
 local function treetrace(cidr)
 	-- print("verbose:",VERBOSE)
 	--newsr=(fpx => 24,
@@ -467,6 +514,7 @@ local function treetrace(cidr)
 	--		 		rst =>1)
 	--		 )
 	--		)
+	local new_link,new_node
 	local newsr = {}
 	local oldsr = {}
 	newsr['trace']={}
@@ -489,7 +537,12 @@ local function treetrace(cidr)
 		newsr=nil
 		return
 	end
-
+	new_link , new_node = get_new_link_node_number(newsr['trace'])
+	if new_link > 0 or new_node >0 then
+		newsr['find_new'] = 1
+	else
+		newsr['find_new'] =0 
+	end
 	local s = Stack:new()
 	s:push(newsr)
 	while s:is_empty() == false do
@@ -521,6 +574,12 @@ local function treetrace(cidr)
 			s:clear()
 			return
 		end
+		new_link , new_node = get_new_link_node_number(newsr['trace'])
+		if new_link > 0 or new_node >0 then
+			newsr['find_new'] = 1
+		else
+			newsr['find_new'] = 0
+		end
 		copy_tracehop(newsr['trace'],oldsr['trace'],1,newsr['trace']['start']-1)
 		if newsr['trace']['rst'] == TR_RESULT_LOOP or newsr['trace']['rst'] ==TR_RESULT_MAXHOP then
 			search_loop(newsr['trace'])
@@ -534,14 +593,31 @@ local function treetrace(cidr)
 			newsr={}
 			goto TREETRACE_WHILE
 		end
-		--TODO: Min non-new netmark prefix lenth. 
-
+		--Min non-new netmark prefix lenth. 
+		if newsr['find_new'] == 0 and oldsr['find_new'] == 0 and oldsr['pfx'] >= MIN_NO_NEW_PREFIX then
+			s:pop()
+			if VERBOSE == 1 then
+				print("SUBNET No new links found:",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
+			end
+			print_tr(oldsr['trace'])
+			if VERBOSE == 1 then
+				print("SUBNET No new links found:",fastrace_fromdword(NETADDR(newsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
+			end
+			print_tr(newsr['trace'])
+			oldsr={}
+			newsr={}
+			goto TREETRACE_WHILE
+		end
 		if (oldsr['pfx'] + 1) >= MAX_PREFIX_LEN then
 			s:pop()
-			print("SUBNET max prefix lenth:",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
+			if VERBOSE == 1 then
+				print("SUBNET max prefix lenth:",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
+			end
 			print_tr(oldsr['trace'])
 			--TODO:last_hop_test
-			print("SUBNET max prefix lenth:",fastrace_fromdword(NETADDR(newsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
+			if VERBOSE == 1 then
+				print("SUBNET max prefix lenth:",fastrace_fromdword(NETADDR(newsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
+			end
 			print_tr(newsr['trace'])
 			oldsr={}
 			newsr={}
@@ -550,7 +626,10 @@ local function treetrace(cidr)
 		oldsr['pfx']=oldsr['pfx']+1
 		newsr['pfx']=oldsr['pfx']
 		s:push(newsr)
-		print("Stack PUSH",newsr['trace']['dst'],newsr['pfx'])
+		if VERBOSE == 1 then
+			print("Stack PUSH",newsr['trace']['dst'],newsr['pfx'])
+			print("")
+		end
 		::TREETRACE_WHILE::
 	end --end for while
 	s:clear()
@@ -597,7 +676,10 @@ action=function()
 	else
 		VERBOSE=0
 	end
-	print("verbose:",VERBOSE)
+	DEBUG=1
+	print("verbose,debug:",VERBOSE,DEBUG)
+	global_link_hashmap={}
+	global_node={}
 	-- VERBOSE=1
 	if prober_type =='last_hop' then
 		if dst_ip then
