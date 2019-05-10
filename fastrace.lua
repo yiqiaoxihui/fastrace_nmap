@@ -705,7 +705,7 @@ action=function()
 		if dst_ip then
 			local ip, err = ipOps.expand_ip(dst_ip)
 			if not err then
-				quicktrace.quicktrace_main(dst_ip,iface)
+				quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
 			else
 				return fail("error:illege ip")
 			end

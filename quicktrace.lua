@@ -11,7 +11,7 @@ quicktrace={}
 
 --1. l3 packet table中没有echo_id,使用l3_rpk_packet:u16(l3_rpk_packet.icmp_offset + 4)获取
 --2.忘记加括号导致过滤器无法获取echo reply
-function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signal,device)
+function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signal,device,VERBOSE)
 	local rpk_type			--返回包类型
 	local from 				--返回包ip
 	local rtt 				--往返时延
@@ -36,13 +36,14 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 	while icmp_reply_listener_signal['status'] == 0 do
 		local status,len,l2_icmp,l3_icmp,time=icmp_rec_socket:pcap_receive()
 		if status then
-			print("get reply packet")
 			echo_id= nil
 			end_time=stdnse.clock_ms()
 			-- print("get icmp packet back")
 			local l3_rpk_packet = packet.Packet:new(l3_icmp, #l3_icmp)
 			if #l3_icmp<(IP_HEAD_SIZE+ICMP_HEAD_SIZE) then
-				print("!BROKEN PACKET:ICMP_PACKET","l3_len:",#l3_icmp,"from",l3_rpk_packet['src_ip'])
+				if VERBOSE == 1 then
+					print("!BROKEN PACKET:ICMP_PACKET","l3_len:",#l3_icmp,"from",l3_rpk_packet['src_ip'])
+				end
 				--return 0
 			end
 			-- for k,v in pairs(l3_rpk_packet) do
@@ -56,7 +57,9 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 			if icmp_type == 0 and icmp_code ==0 then
 				--echo_id=l3_rpk_packet['echo_id']
 				echo_id=l3_rpk_packet:u16(l3_rpk_packet.icmp_offset + 4)
-				print("RPK_ICMPECHO",echo_id)
+				if VERBOSE == 1 then
+					print("RPK_ICMPECHO",echo_id)
+				end
 				if echo_id ~= nil and trace['echo_id'][echo_id] ~= nil then
 					send_ttl = trace['echo_id'][echo_id]
 					if trace['end'] > send_ttl then
@@ -65,26 +68,34 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 					trace['hop'][send_ttl]['from']=from
 					trace['hop'][send_ttl]['rtt']=end_time - trace['rtt'][send_ttl]['start_time']
 				else
-					print("not find echo_id in trace table:",echo_id)
+					if VERBOSE == 1 then
+						print("not find echo_id in trace table:",echo_id)
+					end
 				end
 
 			end
 			if icmp_type == 11 and icmp_code == 0 then
 				if (#l3_icmp-l3_rpk_packet['icmp_payload_offset'])<(IP_HEAD_SIZE+ICMP_HEAD_SIZE) then
-					print("!BROKEN PACKET:ICMP_DEST_UNREACH","l3_len:",l3_len,"from",l3_rpk_packet['src_ip'])
+					if VERBOSE == 1 then
+						print("!BROKEN PACKET:ICMP_DEST_UNREACH","l3_len:",l3_len,"from",l3_rpk_packet['src_ip'])
+					end
 				else
 					local raw_sender_data_in_l3_rpk_packet=l3_icmp:sub(l3_rpk_packet.icmp_payload_offset+1)
 					local raw_sender_packet=packet.Packet:new(raw_sender_data_in_l3_rpk_packet,#raw_sender_data_in_l3_rpk_packet)
 
 					echo_id=raw_sender_packet:u16(raw_sender_packet.icmp_offset + 4)
 					--echo_id = raw_sender_packet['echo_id']
-					print("ICMP_EXC_TTL",echo_id)
+					if VERBOSE == 1 then
+						print("ICMP_EXC_TTL",echo_id)
+					end
 					if echo_id ~= nil and trace['echo_id'][echo_id] ~= nil then
 						send_ttl = trace['echo_id'][echo_id]
 						trace['hop'][send_ttl]['from']=from
 						trace['hop'][send_ttl]['rtt']=end_time - trace['rtt'][send_ttl]['start_time']
 					else
-						print("not find echo_id in trace table:",echo_id)
+						if VERBOSE == 1 then
+							print("not find echo_id in trace table:",echo_id)
+						end
 					end
 				end
 			end
@@ -96,7 +107,9 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 			-- rpk_type=parsepack.get_ptype_icmp(l3_rpk_packet,#l3_icmp)
 			-- print(">HOP:",pi['ttl'],from)
 		else
-			print("icmp reply linstener timeout")
+			if VERBOSE == 1 then
+				print("icmp reply linstener timeout")
+			end
 		end
 	end
 	icmp_rec_socket:close()
@@ -126,12 +139,11 @@ function set_ttl_to_ping(trace,ttl,echo_id,send_l3_sock,device)
 	send_l3_sock:ip_send(ip.buf)
 end
 
-function quicktrace.quicktrace_main(dst_ip,iface)
+function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
 	--建立发送l3层报文的raw socket
 	--用于发送设置了ttl的探测末跳报文
 	local send_l3_sock = nmap.new_dnet()
 	send_l3_sock:ip_open()
-	print("action:",dst_ip)
 
 	local trace={}
 	trace['ip_bin_src']=ipOps.ip_to_str(iface.address)
@@ -151,7 +163,7 @@ function quicktrace.quicktrace_main(dst_ip,iface)
 	local icmp_reply_listener_condvar = nmap.condvar(icmp_reply_listener_signal)
 	icmp_reply_listener_signal['status']=0 	--监听结束信号
 	icmp_reply_listener_signal['icmp_pu']=0 	--是否收到icmp端口不可达信号
-	local icmp_reply_listener_handler=stdnse.new_thread(icmp_reply_listener,dst_ip,trace,send_l3_sock,icmp_reply_listener_signal,iface.device)
+	local icmp_reply_listener_handler=stdnse.new_thread(icmp_reply_listener,dst_ip,trace,send_l3_sock,icmp_reply_listener_signal,iface.device,VERBOSE)
 	stdnse.sleep(1)
 
 	local echo_seq
@@ -165,7 +177,9 @@ function quicktrace.quicktrace_main(dst_ip,iface)
 		trace['hop'][i]={}
 		trace['hop'][i]['from']=0
 		trace['hop'][i]['rtt']=0
-		io.write("send ping packet ",i," ",echo_id,"\n")
+		if VERBOSE == 1 then
+			io.write("send ping packet ",i," ",echo_id,"\n")
+		end
 		set_ttl_to_ping(trace,i,echo_id,send_l3_sock,iface.device)
 	end
 	stdnse.sleep(5)
@@ -173,13 +187,15 @@ function quicktrace.quicktrace_main(dst_ip,iface)
 		if coroutine.status(icmp_reply_listener_handler) =="dead" then
 			icmp_reply_listener_handler=nil
 		else
-			print("wait icmp port unreachable listener end...")
+			if VERBOSE == 1 then
+				print("wait icmp port unreachable listener end...")
+			end
 			icmp_reply_listener_signal['status'] = 1
 			icmp_reply_listener_condvar("wait")
 		end
 	until icmp_reply_listener_handler==nil
 	for i =1,trace['end'] do
-		io.write(i,' ',trace['hop'][i]['from']," ",trace['hop'][i]['rtt'],"\n")
+		io.write(i,' ',trace['hop'][i]['from']," ",trace['hop'][i]['rtt'],"ms\n")
 	end
 	send_l3_sock:ip_close()
 end
