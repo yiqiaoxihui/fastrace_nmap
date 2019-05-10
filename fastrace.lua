@@ -15,6 +15,7 @@ require('base')
 require('prober')
 require('last_hop')
 require('unit_test')
+local quicktrace = require('quicktrace')
 local Stack=require('stack')
 
 
@@ -66,7 +67,7 @@ local function hopping(dst_ip,ttl,try)
 	local send_packet_type=PROBING_TYPE_ARRAY[try]
 	pi['dport']=PROBING_DPORT_ARRAY[try]
 	pi['sport']=math.random(0x7000, 0xffff)		--why from 7000
-	pi['wt']=3000								--wait time
+	pi['wt']=2000								--wait time
 	pi['ttl']=ttl
 	pi['dst']=dst_ip
 	pi['src']=iface.address
@@ -428,36 +429,6 @@ function forward_reverse(trace,fcmptrace,rcmptrace)
 	end
 	return 1
 end
-local function normal_traceroute(dst_ip)
-	local trace={}
-	trace['dst']=dst_ip
-	trace['start']=1
-	forward_traceroute(trace,nil)
-end
-local function copy_tracehop(tracedst,tracesrc,ttls,ttle)
-	--copy from reverse_traceroute
-	for i=ttls,ttle do
-		tracedst['hop'][i] = tracesrc['hop'][i]
-	end
-	tracedst['start']=ttls
-end
-local function compare_endrouter(trace1,trace2)
-	if trace1['rst'] == TR_RESULT_DESIGN or trace2['rst'] == TR_RESULT_DESIGN then
-		return -1
-	end
-	if trace1['end'] < 2 then
-		return 0
-	end
-	if trace1['end'] == trace2['end'] then 
-		if trace1['hop'][trace1['end'] - 1] == trace2['hop'][trace2['end'] - 1] then
-			return 0
-		else
-			return 1
-		end
-	end
-	return 1
-	-- body
-end
 local function get_new_link_node_number(trace)
 	local new_link=0
 	local new_node = 0
@@ -503,6 +474,42 @@ local function get_new_link_node_number(trace)
 	end
 	return new_link,new_node
 end
+local function normal_traceroute(dst_ip)
+	local trace={}
+	trace['dst']=dst_ip
+	trace['start']=1
+	if VERBOSE == 1 then
+		io.write("Fastrace ",dst_ip,"/32"," at ",os.date("%Y-%m-%d %H:%M:%S"),"\n")
+	end
+	forward_traceroute(trace,nil)
+	print_tr(trace)
+	get_new_link_node_number(trace) 		--更新已获取边，节点
+end
+local function copy_tracehop(tracedst,tracesrc,ttls,ttle)
+	--copy from reverse_traceroute
+	for i=ttls,ttle do
+		tracedst['hop'][i] = tracesrc['hop'][i]
+	end
+	tracedst['start']=ttls
+end
+local function compare_endrouter(trace1,trace2)
+	if trace1['rst'] == TR_RESULT_DESIGN or trace2['rst'] == TR_RESULT_DESIGN then
+		return -1
+	end
+	if trace1['end'] < 2 then
+		return 0
+	end
+	if trace1['end'] == trace2['end'] then 
+		if trace1['hop'][trace1['end'] - 1] == trace2['hop'][trace2['end'] - 1] then
+			return 0
+		else
+			return 1
+		end
+	end
+	return 1
+	-- body
+end
+
 local function treetrace(cidr)
 	-- print("verbose:",VERBOSE)
 	--newsr=(fpx => 24,
@@ -676,11 +683,24 @@ action=function()
 	else
 		VERBOSE=0
 	end
-	DEBUG=1
+	DEBUG=0
 	print("verbose,debug:",VERBOSE,DEBUG)
 	global_link_hashmap={}
 	global_node={}
 	-- VERBOSE=1
+	if prober_type == "quicktrace" then
+		if dst_ip then
+			local ip, err = ipOps.expand_ip(dst_ip)
+			if not err then
+				quicktrace.quicktrace_main(dst_ip,iface)
+			else
+				return fail("error:illege ip")
+			end
+		else
+			return fail("error:no target input")
+		end
+		return true
+	end 
 	if prober_type =='last_hop' then
 		if dst_ip then
 			local ip, err = ipOps.expand_ip(dst_ip)
@@ -769,7 +789,7 @@ action=function()
 		local cidr = str2cidr(dst_ip)
 		print(cidr['net'],cidr['pfx'])
 		local temp, err = ipOps.expand_ip(cidr['net'])
-		if err then
+		if err or dst_ip:match( ":" ) ~= nil then
 			print("error:illege ip",cidr['net'])
 			return true
 		end
@@ -788,13 +808,14 @@ action=function()
 			local cidr = str2cidr(ip[1])
 			-- print(cidr['net'],cidr['pfx'])
 			local temp, err = ipOps.expand_ip(cidr['net'])
-			if not err then
+			if not err and line:match( ":" ) == nil then
 				-- print(HOSTADDR(cidr['net'],cidr['pfx']))
 				-- print(NETADDR(cidr['net'],cidr['pfx']))
 				if cidr['pfx']>=32 then
 					normal_traceroute(cidr['net'])
 				elseif cidr['pfx'] >=1 then
 					treetrace(cidr)
+					print("global_link_hashmap,global_node",#global_link_hashmap,#global_node)
 				else
 					print("error cidr format:",ip[1],cidr['net'],cidr['pfx'])
 				end
