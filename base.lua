@@ -246,7 +246,7 @@ print_tr = function(tr)
         return
     end 
     for i= tr['start'],tr['end'] do
-    	io.write("~ ",i," ",tr['hop'][i],"\n")
+    	io.write("~ ",i," ",tr['hop'][i]," ",tr['reply_ttl'][i]," ",tr['rtt'][i],"ms\n")
     end
 end
 PTYPE2STRING = {

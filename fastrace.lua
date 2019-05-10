@@ -124,19 +124,21 @@ local function reverse_traceroute(trace,cmptrace)
 	ttl=trace['end']	--trace->end = trace->start - 1;  trace->start = cmptrace->end;
 	while ttl ~=0 do
 		rpk_type,from,rtt,reply_ttl=hopping(trace['dst'],ttl,try)
-		trace['rtt']=rtt
-		trace['reply_ttl']=reply_ttl
 		if rpk_type ==0 then
 			return -1
 		end
 		if rpk_type == RPK_TIMEOUT then
 			---print("*HOP:",ttl,"timeout:",timeout)
 			trace['hop'][ttl]=0
+			trace['rtt'][ttl]=0
+			trace['reply_ttl'][ttl]=0
 			-- ttl=ttl-1
 			goto reverse_hopping_begin
 		end
 		timeout=0
 		trace['hop'][ttl] = from
+		trace['rtt'][ttl]=rtt
+		trace['reply_ttl'][ttl]=reply_ttl
 		if rpk_type ~= RPK_TIMEEXC then
 			if IS_UNREACH(rpk_type) == 1 then 		--0 and 1 for lua is true
 				code=rpk_type - RPK_UNREACH
@@ -221,6 +223,8 @@ local function forward_traceroute(trace,cmptrace)
 	end
 	ttl=trace['start']
 	trace['hop']={}
+	trace['rtt']={}
+	trace['reply_ttl']={}
 	---print("forward_traceroute:")
 	while ttl <= MAX_HOP do
 		-- print("begin:",timeout,timeout_hops)
@@ -229,8 +233,6 @@ local function forward_traceroute(trace,cmptrace)
 		end
 		-- print("begin hopping:",rpk_type,from)
 		rpk_type,from,rtt,reply_ttl=hopping(trace['dst'],ttl,try)
-		trace['rtt']=rtt
-		trace['reply_ttl']=reply_ttl
 		-- print("hopping:",rpk_type,from)
 		if rpk_type==0 then
 			---print("forward_traceroute stop because rpk_type 0!")
@@ -247,6 +249,9 @@ local function forward_traceroute(trace,cmptrace)
 				--近邻无应答结束技术 NNS
 				if cmptrace['end'] == ttl and cmptrace['rst'] == TR_RESULT_TIMEOUT then
 					trace['hop'][ttl]=0
+					trace['rtt'][ttl]=0
+					trace['reply_ttl'][ttl]=0
+
 					trace['end']=ttl
 					trace['rst']=TR_RESULT_TIMEOUT
 					if VERBOSE == 1 then
@@ -260,6 +265,8 @@ local function forward_traceroute(trace,cmptrace)
 				timeout=0
 				timeout_hops=timeout_hops+1
 				trace['hop'][ttl]=0
+				trace['rtt'][ttl]=0
+				trace['reply_ttl'][ttl]=0
 				if timeout_hops>=MAX_TIMEOUT_HOPS then	--连续MAX_TIMEOUT_HOPS跳超时，退出，否则进行下一跳
 					--Too many continuous timeout.
 					--Remain a router ZERO at the end of path.
@@ -284,6 +291,8 @@ local function forward_traceroute(trace,cmptrace)
 		timeout_hops = 0
 		--/* Record response IP address. */
 		trace['hop'][ttl]=from
+		trace['rtt'][ttl]=rtt
+		trace['reply_ttl'][ttl]=reply_ttl
 		if rpk_type == RPK_TIMEEXC then
 			if ttl>2 and from ~= trace['hop'][ttl-1] then 	--相邻两跳相同不算
 				local i
@@ -320,6 +329,8 @@ local function forward_traceroute(trace,cmptrace)
 							--TODO:right or not
 							for j = ttl + 1 , cmptrace['end'] - i + ttl  do 	--将i之后的结果，拷贝到trace中
 								trace['hop'][j] = cmptrace[hop][i+j-ttl]
+								trace['rtt'][j]=cmptrace['rtt'][i+j-ttl]
+								trace['reply_ttl'][j]=cmptrace['reply_ttl'][i+j-ttl]
 							end
 							return 1
 						end
@@ -489,6 +500,8 @@ local function copy_tracehop(tracedst,tracesrc,ttls,ttle)
 	--copy from reverse_traceroute
 	for i=ttls,ttle do
 		tracedst['hop'][i] = tracesrc['hop'][i]
+		tracedst['rtt'][i]=tracesrc['rtt'][i]
+		tracedst['reply_ttl'][i]=tracesrc['reply_ttl'][i]
 	end
 	tracedst['start']=ttls
 end
