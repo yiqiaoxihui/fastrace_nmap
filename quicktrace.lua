@@ -194,6 +194,7 @@ function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
 			icmp_reply_listener_condvar("wait")
 		end
 	until icmp_reply_listener_handler==nil
+	io.write("Target ",dst_ip , " hop ",1," - ",trace['end'] ,"\n")
 	for i =1,trace['end'] do
 		io.write(i,' ',trace['hop'][i]['from']," ",trace['hop'][i]['rtt'],"ms\n")
 	end

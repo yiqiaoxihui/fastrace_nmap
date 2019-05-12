@@ -444,7 +444,7 @@ local function get_new_link_node_number(trace)
 	local new_link=0
 	local new_node = 0
 	local link_key
-	if DEBUG == 1 then
+	if DEBUG == 1 or VERBOSE>=3 then
 		print("^^^^^^^^^^^^^^^global_node^^^^^^^^^^^^^^^^^^")
 		for k,v in pairs(global_node) do
 			print("global_node:",k)
@@ -465,7 +465,7 @@ local function get_new_link_node_number(trace)
 			if global_link_hashmap[link_key] == nil then
 				new_link= new_link + 1
 				global_link_hashmap[link_key] = 1
-				if DEBUG == 1 then
+				if DEBUG == 1 or VERBOSE>=3 then
 					io.write('new link:',trace['hop'][i],' ~~~~~~~~~~~~~~~~ ',trace['hop'][i+1],"\n")
 				end
 				-- return 1
@@ -474,7 +474,7 @@ local function get_new_link_node_number(trace)
 		if trace['hop'][i] ~= 0 and global_node[trace['hop'][i]] == nil then
 			new_node = new_node + 1
 			global_node[trace['hop'][i]] = 1
-			if DEBUG == 1 then
+			if DEBUG == 1 or VERBOSE >=2 then
 				io.write('new node:',trace['hop'][i],"\n")
 			end
 			-- return 1
