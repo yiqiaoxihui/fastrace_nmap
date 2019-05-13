@@ -16,6 +16,7 @@ require('prober')
 require('last_hop')
 require('unit_test')
 local quicktrace = require('quicktrace')
+local last_N_hop = require('last_N_hop')
 local Stack=require('stack')
 
 
@@ -95,7 +96,7 @@ local function hopping(dst_ip,ttl,try)
 		rpk_type, from,rtt,reply_ttl=prober.send_udp_big_port(pi,send_l3_sock,iface.device)
 		-- print("probe result:rpk_type,from:",rpk_type,from)
 	end
-	if VERBOSE == 1 then
+	if VERBOSE >= 1 then
 		print_ri(pi,rpk_type,from,rtt,reply_ttl)
 	end
 	return rpk_type,from,rtt,reply_ttl
@@ -144,19 +145,19 @@ local function reverse_traceroute(trace,cmptrace)
 				code=rpk_type - RPK_UNREACH
 				if code ~= ICMP_PROT_UNREACH and code ~= ICMP_PORT_UNREACH then
 					trace['rst'] = TR_RESULT_UNREACH
-		        	if VERBOSE == 1 then
+		        	if VERBOSE >= 1 then
 		        		print("reverse_traceroute NOT_RPK_TIMEEXC IS_UNREACH TR_RESULT_UNREACH")
 		        	end
 				else
 					---print(">HOP:",ttl,"get target:",from)
 					trace['rst'] = TR_RESULT_GOTTHERE
-		        	if VERBOSE == 1 then
+		        	if VERBOSE >= 1 then
 		        		print("reverse_traceroute ,NOT RPK_TIMEEXC ,IS_UNREACH ,ICMP_PROT_UNREACH or ICMP_PORT_UNREACH, TR_RESULT_GOTTHERE")
 		        	end
 				end
 			else
 				---print(">HOP:",ttl,"get target:",from)
-	        	if VERBOSE == 1 then
+	        	if VERBOSE >= 1 then
 	        		print("reverse_traceroute ,NOT RPK_TIMEEXC ,NOT IS_UNREACH ,TR_RESULT_GOTTHERE")
 	        	end
 				trace['rst'] = TR_RESULT_GOTTHERE
@@ -176,7 +177,7 @@ local function reverse_traceroute(trace,cmptrace)
         	trace['end'] = ttl
         	trace['rst'] = TR_RESULT_FAKE
         	-- ttl=ttl-1
-        	if VERBOSE == 1 then
+        	if VERBOSE >= 1 then
         		print("reverse_traceroute ,TR_RESULT_FAKE")
         	end
         	goto reverse_hopping_begin
@@ -187,7 +188,7 @@ local function reverse_traceroute(trace,cmptrace)
 				---print("TR_RESULT_DESIGN:",ttl,"from:",from)
 				trace['rst'] = TR_RESULT_DESIGN
 			end
-			if VERBOSE == 1 then
+			if VERBOSE >= 1 then
 				io.write("reverse_traceroute BNP ,current: ",ttl," cmptrace start,end ttl: ",cmptrace['start']," ",cmptrace['end']," rst: ",trace['rst'],"\n")
 			end
 			return 1
@@ -254,7 +255,7 @@ local function forward_traceroute(trace,cmptrace)
 
 					trace['end']=ttl
 					trace['rst']=TR_RESULT_TIMEOUT
-					if VERBOSE == 1 then
+					if VERBOSE >= 1 then
 						print("forward_traceroute NNS")
 					end
 					return 1
@@ -275,7 +276,7 @@ local function forward_traceroute(trace,cmptrace)
 					if timeouth>=1 then
 						print("TOH OK")
 					end
-					if VERBOSE == 1 then
+					if VERBOSE >= 1 then
 						print("forward_traceroute TR_RESULT_TIMEOUT ttl:",ttl,"timeout_hops:",timeout_hops)
 					end
 					---print("!TR_RESULT_TIMEOUT:",ttl,"timeout:",timeout,timeout_hops)
@@ -300,7 +301,7 @@ local function forward_traceroute(trace,cmptrace)
 					if from==trace['hop'][i] then	--
 						trace['end']=ttl
 						trace['rst']=TR_RESULT_LOOP
-						if VERBOSE == 1 then
+						if VERBOSE >= 1 then
 							print("forward_traceroute TR_RESULT_LOOP ")
 						end
 						---print("TR_RESULT_LOOP:",ttl,"from:",from)
@@ -323,7 +324,7 @@ local function forward_traceroute(trace,cmptrace)
 						if from == cmptrace['hop'][i] then
 							trace['end'] = ttl
 							trace['rst'] = TR_RESULT_DESIGN
-							if VERBOSE == 1 then
+							if VERBOSE >= 1 then
 								print("forward_traceroute TR_RESULT_DESIGN compare_each_from,current ttl:",ttl,"cmptrace hop:",i)
 							end
 							--TODO:right or not
@@ -340,7 +341,7 @@ local function forward_traceroute(trace,cmptrace)
 					if cmptrace['rst'] == TR_RESULT_LOOP and cmptrace['end'] == ttl and cmptrace['hop'][ttl] == trace['hop'][ttl] then
 						trace['end'] = ttl
 						trace['rst'] = TR_RESULT_LOOP
-						if VERBOSE == 1 then
+						if VERBOSE >= 1 then
 							print("forward_traceroute TR_RESULT_LOOP by cmptrace")
 						end
 						return 1
@@ -358,7 +359,7 @@ local function forward_traceroute(trace,cmptrace)
 			if code ~=  ICMP_PROT_UNREACH  and  code ~= ICMP_PORT_UNREACH then
 				trace['end'] = ttl
 				trace['rst'] = TR_RESULT_UNREACH
-				if VERBOSE == 1 then
+				if VERBOSE >= 1 then
 					print("forward_traceroute TR_RESULT_UNREACH return")
 				end
 				return 1
@@ -370,7 +371,9 @@ local function forward_traceroute(trace,cmptrace)
 		do
 			trace['end']=ttl
 			trace['rst']=TR_RESULT_GOTTHERE
-			---print(">HOP:",ttl,"get target:",from)
+			if VERBOSE >= 1 then
+				print("forward_traceroute TR_RESULT_GOTTHERE return")
+			end
 			return 1
 		end
 		-- if rpk_type==RPK_ICMPECHO then
@@ -381,7 +384,7 @@ local function forward_traceroute(trace,cmptrace)
 	end
 	trace['end']=MAX_HOP
 	trace['rst']=TR_RESULT_MAXHOP
-	if VERBOSE == 1 then
+	if VERBOSE >= 1 then
 		print("forward_traceroute MAX_HOP return")
 	end
 	return 1
@@ -489,7 +492,7 @@ local function normal_traceroute(dst_ip)
 	local trace={}
 	trace['dst']=dst_ip
 	trace['start']=1
-	if VERBOSE == 1 then
+	if VERBOSE >= 1 then
 		io.write("Fastrace ",dst_ip,"/32"," at ",os.date("%Y-%m-%d %H:%M:%S"),"\n")
 	end
 	forward_traceroute(trace,nil)
@@ -550,7 +553,7 @@ local function treetrace(cidr)
 	newsr['trace']['dst']=IP_INC(NETADDR(cidr['net'],cidr['pfx']))
 	newsr['trace']['start'] = 1
 	-- print(newsr['trace']['dst'],newsr['trace']['start'])
-	if VERBOSE == 1 then
+	if VERBOSE >= 1 then
 		io.write("Fastrace ",newsr['trace']['dst'],"/",newsr['pfx']," at ",os.date("%Y-%m-%d %H:%M:%S"),"\n")
 	end
 	if forward_traceroute(newsr['trace'],nil)==-1 then
@@ -585,7 +588,7 @@ local function treetrace(cidr)
 			newsr['trace']['dst'] = IP_INC(NETADDR(oldsr['trace']['dst'],oldsr['pfx']))
 		end 
 		newsr['trace']['start'] = 0			--/* `start' waiting to be set by `oldsr'. */
-		if VERBOSE == 1 then 
+		if VERBOSE >= 1 then 
 			io.write('get oldsr on top stack:',oldsr['trace']['dst'],"/",oldsr['pfx'],"\n")
 			io.write('get newsr by oldsr:',newsr['trace']['dst'],"/",oldsr['pfx'],"\n")
 			io.write("Fastrace ",newsr['trace']['dst'],"/",oldsr['pfx']," at ",os.date("%Y-%m-%d %H:%M:%S"),"\n")
@@ -616,11 +619,11 @@ local function treetrace(cidr)
 		--Min non-new netmark prefix lenth. 
 		if newsr['find_new'] == 0 and oldsr['find_new'] == 0 and oldsr['pfx'] >= MIN_NO_NEW_PREFIX then
 			s:pop()
-			if VERBOSE == 1 then
+			if VERBOSE >= 1 then
 				print("SUBNET No new links found:",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
 			end
 			print_tr(oldsr['trace'])
-			if VERBOSE == 1 then
+			if VERBOSE >= 1 then
 				print("SUBNET No new links found:",fastrace_fromdword(NETADDR(newsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
 			end
 			print_tr(newsr['trace'])
@@ -630,12 +633,12 @@ local function treetrace(cidr)
 		end
 		if (oldsr['pfx'] + 1) >= MAX_PREFIX_LEN then
 			s:pop()
-			if VERBOSE == 1 then
+			if VERBOSE >= 1 then
 				print("SUBNET max prefix lenth:",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
 			end
 			print_tr(oldsr['trace'])
 			--TODO:last_hop_test
-			if VERBOSE == 1 then
+			if VERBOSE >= 1 then
 				print("SUBNET max prefix lenth:",fastrace_fromdword(NETADDR(newsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
 			end
 			print_tr(newsr['trace'])
@@ -646,7 +649,7 @@ local function treetrace(cidr)
 		oldsr['pfx']=oldsr['pfx']+1
 		newsr['pfx']=oldsr['pfx']
 		s:push(newsr)
-		if VERBOSE == 1 then
+		if VERBOSE >= 1 then
 			print("Stack PUSH",newsr['trace']['dst'],newsr['pfx'])
 			print("")
 		end
@@ -686,16 +689,7 @@ action=function()
 	local prober_type=stdnse.get_script_args("type")	--默认traceroute
 	-- verbose=0
 	VERBOSE=stdnse.get_script_args("verbose")
-
-	if VERBOSE ~=nil then
-		if VERBOSE ~= '1' and VERBOSE ~= '0' then
-			return print("error:verbose param error",VERBOSE)
-		else
-			VERBOSE=tonumber(VERBOSE)
-		end
-	else
-		VERBOSE=0
-	end
+	VERBOSE=tonumber(VERBOSE)
 	DEBUG=0
 	print("verbose,debug:",VERBOSE,DEBUG)
 	global_link_hashmap={}
@@ -706,6 +700,27 @@ action=function()
 			local ip, err = ipOps.expand_ip(dst_ip)
 			if not err then
 				quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
+			else
+				return fail("error:illege ip")
+			end
+		else
+			return fail("error:no target input")
+		end
+		return true
+	end 
+	--last_N_hop
+	if prober_type == "lastnhop" then
+		local last_hop_number=stdnse.get_script_args("hop")
+		if last_hop_number == nil then
+			print("error:no hop input",last_hop_number)
+			return true
+		end
+		-- print("error:no hop input",last_hop_number)
+		last_hop_number=tonumber(last_hop_number)
+		if dst_ip then
+			local ip, err = ipOps.expand_ip(dst_ip)
+			if not err then
+				last_N_hop.last_n_hop_main(dst_ip,last_hop_number,iface,VERBOSE)
 			else
 				return fail("error:illege ip")
 			end

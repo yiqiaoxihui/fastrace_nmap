@@ -32,7 +32,7 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 	local capture_rule_icmp=capture_rule_echo_reply.." or "..capture_rule_icmp_error
 	icmp_rec_socket:pcap_open(device,128,false,capture_rule_icmp)
 	icmp_rec_socket:set_timeout(5000)
-
+ 
 	while icmp_reply_listener_signal['status'] == 0 do
 		local status,len,l2_icmp,l3_icmp,time=icmp_rec_socket:pcap_receive()
 		if status then
@@ -41,7 +41,7 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 			-- print("get icmp packet back")
 			local l3_rpk_packet = packet.Packet:new(l3_icmp, #l3_icmp)
 			if #l3_icmp<(IP_HEAD_SIZE+ICMP_HEAD_SIZE) then
-				if VERBOSE == 1 then
+				if VERBOSE >= 1 then
 					print("!BROKEN PACKET:ICMP_PACKET","l3_len:",#l3_icmp,"from",l3_rpk_packet['src_ip'])
 				end
 				--return 0
@@ -57,7 +57,7 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 			if icmp_type == 0 and icmp_code ==0 then
 				--echo_id=l3_rpk_packet['echo_id']
 				echo_id=l3_rpk_packet:u16(l3_rpk_packet.icmp_offset + 4)
-				if VERBOSE == 1 then
+				if VERBOSE >= 1 then
 					print("RPK_ICMPECHO",echo_id)
 				end
 				if echo_id ~= nil and trace['echo_id'][echo_id] ~= nil then
@@ -65,10 +65,11 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 					if trace['end'] > send_ttl then
 						trace['end'] = send_ttl
 					end
+					trace['hop'][send_ttl]['reply_ttl']=reply_ttl
 					trace['hop'][send_ttl]['from']=from
 					trace['hop'][send_ttl]['rtt']=end_time - trace['rtt'][send_ttl]['start_time']
 				else
-					if VERBOSE == 1 then
+					if VERBOSE >= 1 then
 						print("not find echo_id in trace table:",echo_id)
 					end
 				end
@@ -76,7 +77,7 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 			end
 			if icmp_type == 11 and icmp_code == 0 then
 				if (#l3_icmp-l3_rpk_packet['icmp_payload_offset'])<(IP_HEAD_SIZE+ICMP_HEAD_SIZE) then
-					if VERBOSE == 1 then
+					if VERBOSE >= 1 then
 						print("!BROKEN PACKET:ICMP_DEST_UNREACH","l3_len:",l3_len,"from",l3_rpk_packet['src_ip'])
 					end
 				else
@@ -85,15 +86,16 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 
 					echo_id=raw_sender_packet:u16(raw_sender_packet.icmp_offset + 4)
 					--echo_id = raw_sender_packet['echo_id']
-					if VERBOSE == 1 then
+					if VERBOSE >= 1 then
 						print("ICMP_EXC_TTL",echo_id)
 					end
 					if echo_id ~= nil and trace['echo_id'][echo_id] ~= nil then
 						send_ttl = trace['echo_id'][echo_id]
 						trace['hop'][send_ttl]['from']=from
+						trace['hop'][send_ttl]['reply_ttl']=reply_ttl
 						trace['hop'][send_ttl]['rtt']=end_time - trace['rtt'][send_ttl]['start_time']
 					else
-						if VERBOSE == 1 then
+						if VERBOSE >= 1 then
 							print("not find echo_id in trace table:",echo_id)
 						end
 					end
@@ -107,7 +109,7 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 			-- rpk_type=parsepack.get_ptype_icmp(l3_rpk_packet,#l3_icmp)
 			-- print(">HOP:",pi['ttl'],from)
 		else
-			if VERBOSE == 1 then
+			if VERBOSE >= 1 then
 				print("icmp reply linstener timeout")
 			end
 		end
@@ -177,7 +179,8 @@ function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
 		trace['hop'][i]={}
 		trace['hop'][i]['from']=0
 		trace['hop'][i]['rtt']=0
-		if VERBOSE == 1 then
+		trace['hop'][i]['reply_ttl']=0
+		if VERBOSE >= 1 then
 			io.write("send ping packet ",i," ",echo_id,"\n")
 		end
 		set_ttl_to_ping(trace,i,echo_id,send_l3_sock,iface.device)
@@ -187,7 +190,7 @@ function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
 		if coroutine.status(icmp_reply_listener_handler) =="dead" then
 			icmp_reply_listener_handler=nil
 		else
-			if VERBOSE == 1 then
+			if VERBOSE >= 1 then
 				print("wait icmp port unreachable listener end...")
 			end
 			icmp_reply_listener_signal['status'] = 1
@@ -196,7 +199,7 @@ function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
 	until icmp_reply_listener_handler==nil
 	io.write("Target ",dst_ip , " hop ",1," - ",trace['end'] ,"\n")
 	for i =1,trace['end'] do
-		io.write(i,' ',trace['hop'][i]['from']," ",trace['hop'][i]['rtt'],"ms\n")
+		io.write(i,' ',trace['hop'][i]['from']," ",trace['hop'][i]['reply_ttl']," ",trace['hop'][i]['rtt'],"ms\n")
 	end
 	send_l3_sock:ip_close()
 end
