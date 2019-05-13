@@ -89,7 +89,7 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 	local capture_rule_icmp_error="((icmp[0]=11) and (icmp[1]=0) and icmp[24:4]="..str_hex_ip..")"--忘记加括号导致过滤器无法获取echo reply
 	local capture_rule_icmp=capture_rule_echo_reply.." or "..capture_rule_icmp_error
 	icmp_rec_socket:pcap_open(device,128,false,capture_rule_icmp)
-	icmp_rec_socket:set_timeout(5000)
+	icmp_rec_socket:set_timeout(3000)
  
 	while icmp_reply_listener_signal['status'] == 0 do
 		local status,len,l2_icmp,l3_icmp,time=icmp_rec_socket:pcap_receive()
@@ -115,30 +115,30 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 			if icmp_type == 0 and icmp_code ==0 then
 				--echo_id=l3_rpk_packet['echo_id']
 				echo_id=l3_rpk_packet:u16(l3_rpk_packet.icmp_offset + 4)
-				if VERBOSE >= 1 then
-					print("icmp_reply_listener, RPK_ICMPECHO",echo_id)
-				end
 				if echo_id ~= nil and trace['echo_id'][echo_id] ~= nil then
 					send_ttl = trace['echo_id'][echo_id]
-					if trace['end'] == -1 then
-						trace['end'] =send_ttl
-					elseif trace['end'] > send_ttl then
-						trace['end'] = send_ttl
+					if VERBOSE >= 3 then
+						print("icmp_reply_listener, RPK_ICMPECHO",echo_id,send_ttl)
 					end
+					-- if trace['end'] == -1 then
+					-- 	trace['end'] =send_ttl
+					-- elseif trace['end'] > send_ttl then
+					-- 	trace['end'] = send_ttl
+					-- end
 					trace['hop'][send_ttl]['from']=from
 					trace['hop'][send_ttl]['rpk_type']=0
 					trace['hop'][send_ttl]['reply_ttl']=reply_ttl
 					trace['hop'][send_ttl]['rtt']=end_time - trace['rtt'][send_ttl]['start_time']
 				else
 					if VERBOSE >= 1 then
-						print("not find echo_id in trace table:",echo_id)
+						print("icmp_reply_listener, ERROR:not find echo_id in trace table:",echo_id)
 					end
 				end
 
 			end
 			if icmp_type == 11 and icmp_code == 0 then
 				if (#l3_icmp-l3_rpk_packet['icmp_payload_offset'])<(IP_HEAD_SIZE+ICMP_HEAD_SIZE) then
-					if VERBOSE >= 1 then
+					if VERBOSE >= 3 then
 						print("!BROKEN PACKET:ICMP_DEST_UNREACH","l3_len:",l3_len,"from",l3_rpk_packet['src_ip'])
 					end
 				else
@@ -147,11 +147,11 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 
 					echo_id=raw_sender_packet:u16(raw_sender_packet.icmp_offset + 4)
 					--echo_id = raw_sender_packet['echo_id']
-					if VERBOSE >= 1 then
-						print("icmp_reply_listener, ICMP_EXC_TTL",echo_id)
-					end
 					if echo_id ~= nil and trace['echo_id'][echo_id] ~= nil then
 						send_ttl = trace['echo_id'][echo_id]
+						if VERBOSE >= 3 then
+							print("icmp_reply_listener, ICMP_EXC_TTL",echo_id,send_ttl)
+						end
 						if trace['start'] == -1 then
 							trace['start'] = send_ttl
 						elseif trace['start'] > send_ttl then
@@ -163,7 +163,7 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 						trace['hop'][send_ttl]['rtt']=end_time - trace['rtt'][send_ttl]['start_time']
 					else
 						if VERBOSE >= 1 then
-							print("not find echo_id in trace table:",echo_id)
+							print("icmp_reply_listener, ERROR:not find echo_id in trace table:",echo_id)
 						end
 					end
 				end
@@ -177,7 +177,7 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 			-- print(">HOP:",pi['ttl'],from)
 		else
 			if VERBOSE >= 1 then
-				print("icmp reply linstener timeout")
+				print("icmp_reply_listener, icmp reply linstener timeout")
 			end
 		end
 	end
@@ -205,7 +205,7 @@ function guest_network_distance(iface,send_l3_sock,ip,last_n_hop,trace,VERBOSE)
 	local send_number=0
 	local left_ttl=-1
 	local first_ttl=64
-
+	local result_hop_start=1 --实际需要从result_hop_start开始探测
 	set_ttl_to_ping(iface,send_l3_sock,ip,first_ttl,trace)
 	stdnse.sleep(2)
 	--TODO
@@ -214,9 +214,10 @@ function guest_network_distance(iface,send_l3_sock,ip,last_n_hop,trace,VERBOSE)
 		-- icmp_echo_listener_signal['receive']=nil		--error:forget reset to nil,cause error guess
 		left_ttl=trace['hop'][first_ttl]['reply_ttl']
 		ttl_from_target_to_source=get_distance_from_target_to_source(left_ttl)
-		print("guest_network_distance, FIRST PREDICT PING SUCCESS",ip,ttl_from_target_to_source)
-		print(ip,ttl_from_target_to_source,"set ttl and send")
-		if ttl_from_target_to_source>30 then  	--avoid too big ttl
+		if VERBOSE >= 1 then
+			print("guest_network_distance, FIRST PREDICT PING SUCCESS",ip,left_ttl,ttl_from_target_to_source)
+		end
+		if ttl_from_target_to_source>30 or ttl_from_target_to_source <5 then  	--avoid too big ttl
 			set_ttl=15
 		else
 			set_ttl=ttl_from_target_to_source
@@ -226,104 +227,180 @@ function guest_network_distance(iface,send_l3_sock,ip,last_n_hop,trace,VERBOSE)
 		stdnse.sleep(1) 	--test,网络延迟，必须等待2秒
 
 		if trace['hop'][set_ttl]['rpk_type'] == 0 then --到达目标，减小ttl
-			print("guest_network_distance, FIRST PREDICT TTL echo reply",ip,ttl_from_target_to_source)
+			if VERBOSE >= 1 then
+				print("guest_network_distance, FIRST PREDICT TTL echo reply",ip,ttl_from_target_to_source)
+			end
 			while true do
 				set_ttl=set_ttl-1
-				print(ip,set_ttl,"set ttl and send")
-				send_number=send_number+1
-				set_ttl_to_ping(iface,send_l3_sock,ip,set_ttl)
-				stdnse.sleep(1)
-				if trace['hop'][set_ttl]['rpk_type'] == 0 then
-					print("guest_network_distance, CONTINUE RECEIVE REPLY ECHO",ip,set_ttl)
-				elseif trace['hop'][set_ttl]['rpk_type'] == 11 then
-					print("guest_network_distance, BREAK BY REPLY ECHO TO EXCEED",ip,set_ttl)
-					break
-				else
-					--nothing todo
-				end
-				if set_ttl<=1 then
-					print(ip,"one step move to zero")
-					break
-				end
-			end
-			--获取倒数last_n_hop跳
-			print("guest_network_distance start,end:",trace['start'],trace['end'])
-			if trace['end'] ~= -1 then
-				for i=trace['end'] - last_n_hop , trace['end'] do
-					set_ttl_to_ping(iface,send_l3_sock,ip,i,trace)
-				end
-			else
-				print("guest_network_distance, NO REACH TARGET ",ip,ttl_from_target_to_source)
-			end
-		elseif trace['hop'][set_ttl]['rpk_type'] == 11 then
-			print("guest_network_distance, FIRST PREDICT TTL time limit",ip,ttl_from_target_to_source)
-			while true do
-				set_ttl=set_ttl+1
-				print(ip,set_ttl,"set ttl and send")
 				send_number=send_number+1
 				set_ttl_to_ping(iface,send_l3_sock,ip,set_ttl,trace)
 				stdnse.sleep(1)
 				if trace['hop'][set_ttl]['rpk_type'] == 0 then
-					print("guest_network_distance, BREAK BY EXCEED TO REPLY ECHO",ip,set_ttl)
-					break
+					if trace['end'] == -1 then
+						trace['end'] =set_ttl
+					elseif trace['end'] > set_ttl then
+						trace['end'] = set_ttl
+					end
+					if VERBOSE >= 2 then
+						print("guest_network_distance, CONTINUE RECEIVE REPLY ECHO",ip,set_ttl)
+					end
 				elseif trace['hop'][set_ttl]['rpk_type'] == 11 then
-					print("guest_network_distance, CONTINUE RECEIVE EXCEED",ip,set_ttl)
+					if VERBOSE >= 2 then
+						print("guest_network_distance, BREAK BY REPLY ECHO TO EXCEED",ip,set_ttl)
+					end
+					break
 				else
-					--nothing todo
+					if VERBOSE >= 2 then
+						print("guest_network_distance, NOTHING RECEIVE",ip,set_ttl)
+					end
 				end
-				if set_ttl>35 then
-					print("guest_network_distance, STOP BY more than 35",ip,set_ttl)
+				if set_ttl<=1 then
+					if VERBOSE >= 1 then
+						print("guest_network_distance, set_ttl to zero",ip,set_ttl)
+					end
 					break
 				end
 			end
 			--获取倒数last_n_hop跳
-			print("guest_network_distance start,end:",trace['start'],trace['end'])
+			if VERBOSE >= 1 then
+				print("guest_network_distance, start,end:",trace['start'],trace['end'])
+			end
 			if trace['end'] ~= -1 then
-				if trace['end'] - trace['start'] >= last_n_hop then 	--已经覆盖last_n_hop
-					return 0
+				result_hop_start = trace['end'] - last_n_hop
+				if result_hop_start <=0 then
+					result_hop_start=1
 				end
-				for i=trace['end'] - last_n_hop , trace['end'] do
+				for i= result_hop_start , trace['end'] do
 					set_ttl_to_ping(iface,send_l3_sock,ip,i,trace)
 				end
 			else
-				print("guest_network_distance, NO REACH TARGET ",ip,ttl_from_target_to_source)
+				if VERBOSE >= 1 then
+					print("guest_network_distance, NO REACH TARGET ",ip,ttl_from_target_to_source)
+				end
+			end
+		elseif trace['hop'][set_ttl]['rpk_type'] == 11 then
+			if VERBOSE >= 1 then
+				print("guest_network_distance, FIRST PREDICT TTL time limit",ip,ttl_from_target_to_source)
+			end
+			while true do
+				set_ttl=set_ttl+1
+				send_number=send_number+1
+				set_ttl_to_ping(iface,send_l3_sock,ip,set_ttl,trace)
+				stdnse.sleep(1)
+				if trace['hop'][set_ttl]['rpk_type'] == 0 then
+					if trace['end'] == -1 then
+						trace['end'] =set_ttl
+					elseif trace['end'] > set_ttl then
+						trace['end'] = set_ttl
+					end
+					if VERBOSE >= 2 then
+						print("guest_network_distance, BREAK BY EXCEED TO REPLY ECHO",ip,set_ttl)
+					end
+					break
+				elseif trace['hop'][set_ttl]['rpk_type'] == 11 then
+					if VERBOSE >= 2 then
+						print("guest_network_distance, CONTINUE RECEIVE EXCEED",ip,set_ttl)
+					end
+				else
+					if VERBOSE >= 2 then
+						print("guest_network_distance, NOTHING RECEIVE",ip,set_ttl)
+					end
+				end
+				if set_ttl>35 then
+					if VERBOSE >= 1 then
+						print("guest_network_distance, STOP BY more than 35",ip,set_ttl)
+					end
+					break
+				end
+			end
+			--获取倒数last_n_hop跳
+			if VERBOSE >= 1 then
+				print("guest_network_distance, start,end:",trace['start'],trace['end'])
+			end
+			if trace['end'] ~= -1 then
+				result_hop_start = trace['end'] - last_n_hop 	--规范实际开始跳数
+				if result_hop_start <=0 then
+					result_hop_start=1
+				end
+				if trace['start'] == -1 then   					--未收到任何生存时间超时报文
+					trace['start'] = result_hop_start			--从result_hop_start 开始
+				elseif trace['start'] <= result_hop_start then	--trace['start'] 覆盖了result_hop_start，直接返回
+					return 0
+				else
+				end
+				for i = result_hop_start , trace['end'] do
+					set_ttl_to_ping(iface,send_l3_sock,ip,i,trace)
+				end
+			else
+				if VERBOSE >= 1 then
+					print("guest_network_distance, NO REACH TARGET ",ip,ttl_from_target_to_source)
+				end
 			end
 		else
-			print("guest_network_distance, FIRST PREDICT TTL no reply",ip,ttl_from_target_to_source)
+			if VERBOSE >= 1 then
+				print("guest_network_distance, FIRST PREDICT TTL no reply",ip,ttl_from_target_to_source)
+			end
 			-- set_ttl=ttl_from_target_to_source
 			while true do
 				set_ttl=set_ttl+1
 				send_number=send_number+1
-				set_ttl_to_ping(iface,send_l3_sock,ip,set_ttl)
+				set_ttl_to_ping(iface,send_l3_sock,ip,set_ttl,trace)
 				stdnse.sleep(1)
 				if trace['hop'][set_ttl]['rpk_type'] == 0 then
-					print("guest_network_distance, BREAK BY EXCEED TO REPLY ECHO",ip,set_ttl)
+					if trace['end'] == -1 then
+						trace['end'] =set_ttl
+					elseif trace['end'] > set_ttl then
+						trace['end'] = set_ttl
+					end
+					if VERBOSE >= 2 then
+						print("guest_network_distance, BREAK BY EXCEED TO REPLY ECHO",ip,set_ttl)
+					end
 					break
 				elseif trace['hop'][set_ttl]['rpk_type'] == 11 then
-					print("guest_network_distance, CONTINUE RECEIVE EXCEED",ip,set_ttl)
+					if VERBOSE >= 2 then
+						print("guest_network_distance, CONTINUE RECEIVE EXCEED",ip,set_ttl)
+					end
 				else
-					--nothing todo
+					if VERBOSE >= 2 then
+						print("guest_network_distance, NOTHING RECEIVE",ip,set_ttl)
+					end
 				end
 				if set_ttl>35 then
-					print("guest_network_distance, STOP BY more than 35",ip,set_ttl)
+					if VERBOSE >= 1 then
+						print("guest_network_distance, STOP BY more than 35",ip,set_ttl)
+					end
 					break
 				end
 			end
-			print("guest_network_distance start,end:",trace['start'],trace['end'])
+			if VERBOSE >= 1 then
+				print("guest_network_distance, start,end:",trace['start'],trace['end'])
+			end
 			if trace['end'] ~= -1 then
-				if trace['end'] - trace['start'] >= last_n_hop then 	--已经覆盖last_n_hop
-					return 0
+				result_hop_start = trace['end'] - last_n_hop 	--规范实际开始跳数
+				if result_hop_start <=0 then
+					result_hop_start=1
 				end
-				for i=trace['end'] - last_n_hop , trace['end'] do
+				if trace['start'] == -1 then   					--未收到任何生存时间超时报文
+					trace['start'] = result_hop_start			--从result_hop_start 开始
+				elseif trace['start'] <= result_hop_start then	--trace['start'] 覆盖了result_hop_start，直接返回
+					return 0
+				else
+
+				end
+				for i = result_hop_start , trace['end'] do
 					set_ttl_to_ping(iface,send_l3_sock,ip,i,trace)
 				end
 			else
-				print("guest_network_distance, NO REACH TARGET ",ip,ttl_from_target_to_source)
+				if VERBOSE >= 1 then
+					print("guest_network_distance, NO REACH TARGET ",ip,ttl_from_target_to_source)
+				end
 			end
 			--mid_ttl=mid_ttl+0.1		--ip:90.196.109.225, left_ttl=9,right_ttl=10, mid_ttl=9,no any reply
 		end
 	else
-		print("guest_network_distance, FIRST PREDICT PING FAIL EXIT",ip,ttl_from_target_to_source)
+		if VERBOSE >= 1 then
+			print("guest_network_distance, FIRST PREDICT PING FAIL EXIT",ip,ttl_from_target_to_source)
+		end
 	end
 
 	return 0
@@ -337,8 +414,9 @@ function last_N_hop.last_n_hop_main(dst_ip,last_n_hop,iface,VERBOSE)
 	--用于发送设置了ttl的探测末跳报文
 	local send_l3_sock = nmap.new_dnet()
 	send_l3_sock:ip_open()
-	print("last hop action:",dst_ip)
-
+	if VERBOSE >= 1 then
+		print("last hop action:",dst_ip)
+	end
 	local trace={}
 	trace['ip_bin_src']=ipOps.ip_to_str(iface.address)
 	trace['ip_bin_dst']=ipOps.ip_to_str(dst_ip)
@@ -363,7 +441,9 @@ function last_N_hop.last_n_hop_main(dst_ip,last_n_hop,iface,VERBOSE)
 			icmp_reply_listener_handler=nil
 		else
 			if VERBOSE >= 1 then
-				print("wait icmp port unreachable listener end...")
+				if VERBOSE >= 1 then
+					print("last_n_hop_main, wait icmp port unreachable listener end...")
+				end
 			end
 			icmp_reply_listener_signal['status'] = 1
 			icmp_reply_listener_condvar("wait")
@@ -371,9 +451,16 @@ function last_N_hop.last_n_hop_main(dst_ip,last_n_hop,iface,VERBOSE)
 	until icmp_reply_listener_handler==nil
 
 	send_l3_sock:ip_close()
-	io.write("Target ",dst_ip , " hop ",trace['end'] - last_n_hop," - ",trace['end'] ,"\n")
-	for i =trace['end'] - last_n_hop ,trace['end'] do
-		io.write(i,' ',trace['hop'][i]['from']," ",trace['hop'][i]['reply_ttl']," ",trace['hop'][i]['rtt'],"ms\n")
+	local result_hop_start=trace['end'] - last_n_hop
+	if result_hop_start <=0 then
+		result_hop_start=1
+	end
+
+	io.write("Target ",dst_ip , " hop ",result_hop_start," - ",trace['end'] ,"\n")
+	if trace['end'] ~=-1 then
+		for i = result_hop_start,trace['end'] do
+			io.write(i,' ',trace['hop'][i]['from']," ",trace['hop'][i]['reply_ttl']," ",trace['hop'][i]['rtt'],"ms\n")
+		end
 	end
 	return true
 end

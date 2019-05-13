@@ -724,6 +724,16 @@ action=function()
 			else
 				return fail("error:illege ip")
 			end
+		elseif ip_file then 	--目标为文件
+			for line in io.lines(ip_file) do
+				dst_ip = line
+				local ip, err = ipOps.expand_ip(dst_ip)
+				if not err then
+					last_N_hop.last_n_hop_main(dst_ip,last_hop_number,iface,VERBOSE)
+				else
+					fail("error:illege ip")
+				end
+			end
 		else
 			return fail("error:no target input")
 		end
