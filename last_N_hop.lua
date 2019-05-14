@@ -415,7 +415,7 @@ function last_N_hop.last_n_hop_main(dst_ip,last_n_hop,iface,VERBOSE)
 	local send_l3_sock = nmap.new_dnet()
 	send_l3_sock:ip_open()
 	if VERBOSE >= 1 then
-		print("last hop action:",dst_ip)
+		io.write("last hop action,target: ",dst_ip," hops: ",last_n_hop,"\n")
 	end
 	local trace={}
 	trace['ip_bin_src']=ipOps.ip_to_str(iface.address)

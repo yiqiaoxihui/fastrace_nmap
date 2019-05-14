@@ -66,6 +66,15 @@ local function hopping(dst_ip,ttl,try)
 	local pi={}		--探测信息
 	-- print(try)
 	local send_packet_type=PROBING_TYPE_ARRAY[try]
+	--探测类型参数
+	if PACKET_TYPE == "ICMP" then
+		send_packet_type=PPK_ICMPECHO
+	elseif PACKET_TYPE == "UDP" then
+		send_packet_type=PPK_UDPBIGPORT
+	elseif PACKET_TYPE == "TCP" then
+		send_packet_type=PPK_SYN
+	else
+	end
 	pi['dport']=PROBING_DPORT_ARRAY[try]
 	pi['sport']=math.random(0x7000, 0xffff)		--why from 7000
 	pi['wt']=2000								--wait time
@@ -79,6 +88,7 @@ local function hopping(dst_ip,ttl,try)
 	local from
 	local rtt
 	local reply_ttl
+
 	if send_packet_type==PPK_ICMPECHO then		--3
 		---print("probe type:PPK_ICMPECHO")
 		rpk_type, from,rtt,reply_ttl=prober.send_icmp_echo(pi,send_l3_sock,iface.device)
@@ -256,7 +266,7 @@ local function forward_traceroute(trace,cmptrace)
 					trace['end']=ttl
 					trace['rst']=TR_RESULT_TIMEOUT
 					if VERBOSE >= 1 then
-						print("forward_traceroute NNS")
+						print("forward_traceroute NNS by cmptrace")
 					end
 					return 1
 				end
@@ -277,7 +287,7 @@ local function forward_traceroute(trace,cmptrace)
 						print("TOH OK")
 					end
 					if VERBOSE >= 1 then
-						print("forward_traceroute TR_RESULT_TIMEOUT ttl:",ttl,"timeout_hops:",timeout_hops)
+						print("forward_traceroute TR_RESULT_TIMEOUT ttl:",ttl,"MAX_TIMEOUT_HOPS:",timeout_hops)
 					end
 					---print("!TR_RESULT_TIMEOUT:",ttl,"timeout:",timeout,timeout_hops)
 					return 1
@@ -668,11 +678,31 @@ end
 local function test(point)
 	point['a']=1
 end
+local function print_help()
+	local print_text= 'Usage:  nmap --script fastrace.lua  --script-args="[[OPTION]=x,...]"  -e [INTERFACE]\n'
+	..'OPTION is:\n'
+	..'type .  .  .  .  .  .  .  .  . probe types (quicktrace/lastnhop/lasthop/help),def: traceroute\n' 				
+	..'packet_type .  .  .  .  .  .  .probing packet types (MIX/TCP/UDP/ICMP), def: MIX \n'						
+	..'max_timeout_per_hop .  .  .  . max timeout number for one hop, def: 2 \n'	
+	..'max_continue_timeout_hops . .  max continue timeout hops, def: 3 \n'	
+	..'max_prefix_len .  .  .  .  . . max prefix lenth, def: 30\n'	
+	..'min_prefix_len .  .  .  .  .  .min prefix lenth, def: 20\n'	
+	..'min_no_new_prefix .  .  .  . . min no-new-found prefix lenth, def: 24\n'	
+	..'hops .  .  .  .  .  .  .  .  . for type=lastnhop, get last hops number middle router, def: 3\n'
+	..'verbose .  .  .  .  .  .  .  . verbose output level (0/1/2/3), def: 0\n'	
+	..'INTERFACE is your interface name\n'
+	io.write(print_text)
+end
 action=function()
 	print("__________________")
 	local ifname = nmap.get_interface() or host.interface
 	if not ifname then
 		return fail("Failed to determine the network interface name")
+	end
+	local prober_type=stdnse.get_script_args("type")	--默认traceroute
+	if prober_type == "help" then 
+		print_help()
+		return 0
 	end
 	iface = nmap.get_interface_info(ifname)
 	send_l3_sock = nmap.new_dnet()
@@ -685,11 +715,24 @@ action=function()
 	if (dst_ip)  and (ip_file) then
 		return fail("error:muti target")
 	end
+	
 
-	local prober_type=stdnse.get_script_args("type")	--默认traceroute
+	PACKET_TYPE=stdnse.get_script_args("packet_type")	--默认traceroute
 	-- verbose=0
-	VERBOSE=stdnse.get_script_args("verbose")
+	VERBOSE=stdnse.get_script_args("verbose")								--调试信息等级
+	MAX_TIMEOUT_PER_HOP=stdnse.get_script_args("max_timeout_per_hop")		--单跳最大重试次数
+	MAX_TIMEOUT_HOPS=stdnse.get_script_args("max_continue_timeout_hops")	--最大连续超时跳数
+	MAX_PREFIX_LEN=stdnse.get_script_args("max_prefix_len")					--treetrace最大探测子网前缀
+	MIN_PREFIX_LEN=stdnse.get_script_args("min_prefix_len")					--treetrace停止探测最小子网前缀
+	MIN_NO_NEW_PREFIX=stdnse.get_script_args("min_no_new_prefix")			--treetrace子网未发现新的节点或边时最小停止探测前缀
+
 	VERBOSE=tonumber(VERBOSE)
+	MAX_TIMEOUT_PER_HOP=tonumber(MAX_TIMEOUT_PER_HOP)
+	MAX_TIMEOUT_HOPS=tonumber(MAX_TIMEOUT_HOPS)
+	MAX_PREFIX_LEN=tonumber(MAX_PREFIX_LEN)
+	MIN_PREFIX_LEN=tonumber(MIN_PREFIX_LEN)
+	MIN_NO_NEW_PREFIX=tonumber(MIN_NO_NEW_PREFIX)
+
 	DEBUG=0
 	print("verbose,debug:",VERBOSE,DEBUG)
 	global_link_hashmap={}
@@ -710,17 +753,13 @@ action=function()
 	end 
 	--last_N_hop
 	if prober_type == "lastnhop" then
-		local last_hop_number=stdnse.get_script_args("hop")
-		if last_hop_number == nil then
-			print("error:no hop input",last_hop_number)
-			return true
-		end
-		-- print("error:no hop input",last_hop_number)
-		last_hop_number=tonumber(last_hop_number)
+		LAST_N_HOP_NUMBER=stdnse.get_script_args("hops")						--获取倒数多少跳
+		LAST_N_HOP_NUMBER=tonumber(LAST_N_HOP_NUMBER)
+
 		if dst_ip then
 			local ip, err = ipOps.expand_ip(dst_ip)
 			if not err then
-				last_N_hop.last_n_hop_main(dst_ip,last_hop_number,iface,VERBOSE)
+				last_N_hop.last_n_hop_main(dst_ip,LAST_N_HOP_NUMBER,iface,VERBOSE)
 			else
 				return fail("error:illege ip")
 			end
@@ -738,14 +777,15 @@ action=function()
 			return fail("error:no target input")
 		end
 		return true
-	end 
+	end
 	if prober_type =='last_hop' then
 		if dst_ip then
 			local ip, err = ipOps.expand_ip(dst_ip)
 			if not err then
 				last_hop_main(dst_ip,iface)
 			else
-				return fail("error:illege ip")
+				print("error:illege ip",dst_ip)
+				return true
 			end
 		elseif ip_file then 		--从文件读入
 			local last_hop_thread_handler={}
