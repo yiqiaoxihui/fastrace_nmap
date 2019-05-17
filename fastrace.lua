@@ -199,7 +199,7 @@ local function reverse_traceroute(trace,cmptrace)
 				trace['rst'] = TR_RESULT_DESIGN
 			end
 			if VERBOSE >= 1 then
-				io.write("reverse_traceroute BNP ,current: ",ttl," cmptrace start,end ttl: ",cmptrace['start']," ",cmptrace['end']," rst: ",trace['rst'],"\n")
+				io.write("reverse_traceroute BNP ","current ip has same hop with cmptrace on ttl = ",ttl," return\n")
 			end
 			return 1
 		end
@@ -266,7 +266,7 @@ local function forward_traceroute(trace,cmptrace)
 					trace['end']=ttl
 					trace['rst']=TR_RESULT_TIMEOUT
 					if VERBOSE >= 1 then
-						print("forward_traceroute NNS by cmptrace")
+						print("forward_traceroute NNS by cmptrace, cmptrace stop on this ttl timeout, and this ip ",trace['dst']," timeout as well as cmptrace on this ttl= ",ttl," NNS stop.")
 					end
 					return 1
 				end
@@ -287,7 +287,7 @@ local function forward_traceroute(trace,cmptrace)
 						print("TOH OK")
 					end
 					if VERBOSE >= 1 then
-						print("forward_traceroute TR_RESULT_TIMEOUT ttl:",ttl,"MAX_TIMEOUT_HOPS:",timeout_hops)
+						print("forward_traceroute TR_RESULT_TIMEOUT, ttl:",ttl,"no result ON continue ",timeout_hops,"hops, stop.")
 					end
 					---print("!TR_RESULT_TIMEOUT:",ttl,"timeout:",timeout,timeout_hops)
 					return 1
@@ -403,7 +403,8 @@ end
 function search_loop(trace)
 	local i,j
 	for i = (trace['start']+2) , trace['end'] do
-		if trace['hop'][i] == trace['hop'][i-1] then
+		--i跳为0，跳过，无需比较
+		if trace['hop'][i] ~= 0 or trace['hop'][i] == trace['hop'][i-1] then
 			-- print('')
 		else
 			j=i-2
@@ -554,7 +555,10 @@ local function treetrace(cidr)
 	oldsr['trace']={}
 	if cidr['pfx']>=MAX_PREFIX_LEN then
 		if (cidr['pfx'] ~=32) and (HOSTADDR(cidr['net'],cidr['pfx'])==0) then
-			cidr['net']=IP_INC(cidr['net'])
+			cidr['net']=IP_INC(NETADDR(cidr['net'],cidr['pfx']))
+		end
+		if VERBOSE >= 1 then
+			io.write("ARRIVE MAX_PREFIX_LEN,begin normal_traceroute"," prefix: ",cidr['pfx']," MAX_PREFIX_LEN: ",MAX_PREFIX_LEN,"\n")
 		end
 		normal_traceroute(cidr['net'])
 		return
@@ -620,7 +624,9 @@ local function treetrace(cidr)
 		--比较末跳路由，如果一致，则认为在同一子网
 		if compare_endrouter(newsr['trace'],oldsr['trace']) == 0 and oldsr['pfx'] >= MIN_PREFIX_LEN then
 			s:pop()
-			print("SAME SUBNET:",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx'])),oldsr['pfx'])
+			if VERBOSE >= 1 then
+				print("SAME SUBNET:",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx'])),oldsr['pfx'])
+			end
 			print_tr(oldsr['trace'])
 			oldsr={}
 			newsr={}
@@ -630,12 +636,12 @@ local function treetrace(cidr)
 		if newsr['find_new'] == 0 and oldsr['find_new'] == 0 and oldsr['pfx'] >= MIN_NO_NEW_PREFIX then
 			s:pop()
 			if VERBOSE >= 1 then
-				print("SUBNET No new links found:",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
+				print("SUBNET No new links found, subnet:")
+				io.write("|",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx'])),"/",oldsr['pfx'],"\n")
+				io.write("|--",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx']+1)),"/",oldsr['pfx']+1,"\n")
+				io.write("|--",fastrace_fromdword(NETADDR(newsr['trace']['dst'],oldsr['pfx']+1)),"/",oldsr['pfx']+1,"\n")
 			end
 			print_tr(oldsr['trace'])
-			if VERBOSE >= 1 then
-				print("SUBNET No new links found:",fastrace_fromdword(NETADDR(newsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
-			end
 			print_tr(newsr['trace'])
 			oldsr={}
 			newsr={}
@@ -681,7 +687,9 @@ end
 local function print_help()
 	local print_text= 'Usage:  nmap --script fastrace.lua  --script-args="[[OPTION]=x,...]"  -e [INTERFACE]\n'
 	..'OPTION is:\n'
-	..'type .  .  .  .  .  .  .  .  . probe types (quicktrace/lastnhop/lasthop/help),def: traceroute\n' 				
+	..'type .  .  .  .  .  .  .  .  . probe types (quicktrace/lastnhop/lasthop/help),def: traceroute\n' 
+	..'ip .  .  .  .  . .  .  .  .  . ip,dot format/cidr format,eg. 1.1.1.1 or 1.1.1.1/24\n'	
+	..'ip_list .  .  .  .  .  . .  .  ip list file path you input\n'	
 	..'packet_type .  .  .  .  .  .  .probing packet types (MIX/TCP/UDP/ICMP), def: MIX \n'						
 	..'max_timeout_per_hop .  .  .  . max timeout number for one hop, def: 2 \n'	
 	..'max_continue_timeout_hops . .  max continue timeout hops, def: 3 \n'	
