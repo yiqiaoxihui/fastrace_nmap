@@ -180,8 +180,20 @@ function NETADDR(ip,pfx)
 	return ip 		--fastrace_fromdword(ip)
 	-- body
 end
+function MID_IP(ip,pfx)
+	local number_ip = ipOps.todword(ip)
+	if not number_ip then
+		print("NETADDR:illege ip number:",ip,pfx)
+		return nil
+	end
+	local ip= bit.band(number_ip,(bit.lshift(0xffffffff,(32-pfx))))
+	local half=bit.rshift(0xffffffff,pfx + 1)
+	ip = ip + half
+	return fastrace_fromdword(ip) 		--fastrace_fromdword(ip)
+	-- body
+end
 function IP_INC(number_ip)
-	if not 794452736 then
+	if not number_ip then
 		print("IP_INC:illege ip number:",number_ip)
 		return nil
 	end
@@ -358,4 +370,6 @@ ALL_NODE			=0	--all node we found
 ALL_SEND_PACKET		=0	--all packet send
 
 RECURSION_TRACE		=0
+
+IMPROVE				=0
 

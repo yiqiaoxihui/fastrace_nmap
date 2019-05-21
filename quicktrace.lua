@@ -31,7 +31,7 @@ function quicktrace_icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_lis
 	local capture_rule_icmp_error="((icmp[0]=11) and (icmp[1]=0) and icmp[24:4]="..str_hex_ip..")"--忘记加括号导致过滤器无法获取echo reply
 	local capture_rule_icmp=capture_rule_echo_reply.." or "..capture_rule_icmp_error
 	icmp_rec_socket:pcap_open(device,128,false,capture_rule_icmp)
-	icmp_rec_socket:set_timeout(5000)
+	icmp_rec_socket:set_timeout(3000)
  
 	while icmp_reply_listener_signal['status'] == 0 do
 		local status,len,l2_icmp,l3_icmp,time=icmp_rec_socket:pcap_receive()
@@ -57,7 +57,7 @@ function quicktrace_icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_lis
 			if icmp_type == 0 and icmp_code ==0 then
 				--echo_id=l3_rpk_packet['echo_id']
 				echo_id=l3_rpk_packet:u16(l3_rpk_packet.icmp_offset + 4)
-				if VERBOSE >= 1 then
+				if VERBOSE >= 2 then
 					print("RPK_ICMPECHO",echo_id)
 				end
 				if echo_id ~= nil and trace['echo_id'][echo_id] ~= nil then
@@ -86,7 +86,7 @@ function quicktrace_icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_lis
 
 					echo_id=raw_sender_packet:u16(raw_sender_packet.icmp_offset + 4)
 					--echo_id = raw_sender_packet['echo_id']
-					if VERBOSE >= 1 then
+					if VERBOSE >= 2 then
 						print("ICMP_EXC_TTL",echo_id)
 					end
 					if echo_id ~= nil and trace['echo_id'][echo_id] ~= nil then
@@ -186,7 +186,7 @@ function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
 		end
 		set_ttl_to_ping(trace,i,echo_id,send_l3_sock,iface.device)
 	end
-	stdnse.sleep(5)
+	stdnse.sleep(3)
 	repeat
 		if coroutine.status(icmp_reply_listener_handler) =="dead" then
 			icmp_reply_listener_handler=nil

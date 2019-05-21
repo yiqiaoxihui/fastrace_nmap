@@ -503,6 +503,16 @@ local function get_new_link_node_number(trace)
 			end
 		end
 		if trace['hop'][i] ~= 0 and global_node[trace['hop'][i]] == nil then
+			--IMPROVE:对新发现的最后几个新发现的节点也trace
+			if  i < (trace['end']-1) and (trace['end']-1)-i <= 2 then
+				if IMPROVE >=1 then
+					if VERBOSE >= 1 then 
+						io.write("IMPROVE get_new_link_node_number\n")
+					end
+					local trace=quicktrace.quicktrace_main(trace['hop'][i],iface,VERBOSE)
+					print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
+				end
+			end
 			new_node = new_node + 1
 			ALL_NODE = ALL_NODE +1
 			global_node[trace['hop'][i]] = 1
@@ -545,7 +555,7 @@ local function compare_endrouter(trace1,trace2)
 	if trace1['end'] < 2 then
 		return 0
 	end
-	if trace1['end'] == trace2['end'] then --IMPORVE:末跳都为零时，不算末跳相等
+	if trace1['end'] == trace2['end'] then --IMPROVE:末跳都为零时，不算末跳相等
 		if trace1['hop'][trace1['end'] - 1] ~=0 and trace1['hop'][trace1['end'] - 1] == trace2['hop'][trace2['end'] - 1] then
 			return 0
 		else
@@ -651,7 +661,14 @@ local function treetrace(cidr)
 		--比较末跳路由，如果一致，则认为在同一子网
 		if compare_endrouter(newsr['trace'],oldsr['trace']) == 0 and oldsr['pfx'] >= MIN_PREFIX_LEN then
 			s:pop()
-
+			--IMPROVE:弹出时，对子网中间ip进行quicktrace
+			if IMPROVE >=1 then
+				if VERBOSE >= 1 then 
+					io.write("IMPROVE compare_endrouter\n")
+				end
+				local trace=quicktrace.quicktrace_main(MID_IP(oldsr['trace']['dst'],oldsr['pfx']),iface,VERBOSE)
+				print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
+			end
 			if VERBOSE >= 1 then
 				io.write("SAME SUBNET: new ip has same last hop with old ip,pop()",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx'])),"/",oldsr['pfx'],"\n")
 				io.write(oldsr['trace']['dst']," last hop: ",oldsr['trace']['hop'][oldsr['trace']['end'] - 1],"\n")
@@ -750,6 +767,7 @@ local function print_help()
 end
 action=function()
 	print("__________________")
+	-- print(MID_IP("1.1.1.1",29))
 	local ifname = nmap.get_interface() or host.interface
 	if not ifname then
 		return fail("Failed to determine the network interface name")
@@ -790,6 +808,10 @@ action=function()
 	--结果输出文件
 	OUTPUT_TYPE=stdnse.get_script_args("output_type")
 	OUTPUT_FILE_HANDLER=""
+	--是否使用改善方案
+	IMPROVE=stdnse.get_script_args("improve")
+	IMPROVE=tonumber(IMPROVE)
+	-- print("IMPROVE",IMPROVE)
 	-- print(OUTPUT_TYPE)
 	if OUTPUT_TYPE == "file" then
 		OUTPUT_FILENAME=stdnse.get_script_args("output_filename")

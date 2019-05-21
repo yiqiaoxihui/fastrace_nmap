@@ -134,7 +134,6 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 						print("icmp_reply_listener, ERROR:not find echo_id in trace table:",echo_id)
 					end
 				end
-
 			end
 			if icmp_type == 11 and icmp_code == 0 then
 				if (#l3_icmp-l3_rpk_packet['icmp_payload_offset'])<(IP_HEAD_SIZE+ICMP_HEAD_SIZE) then
