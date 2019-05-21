@@ -63,6 +63,7 @@ end
 
 
 local function hopping(dst_ip,ttl,try)
+	ALL_SEND_PACKET=ALL_SEND_PACKET+1
 	local pi={}		--探测信息
 	-- print(try)
 	local send_packet_type=PROBING_TYPE_ARRAY[try]
@@ -188,7 +189,7 @@ local function reverse_traceroute(trace,cmptrace)
         	trace['rst'] = TR_RESULT_FAKE
         	-- ttl=ttl-1
         	if VERBOSE >= 1 then
-        		print("reverse_traceroute ,TR_RESULT_FAKE")
+        		print("reverse_traceroute, TR_RESULT_FAKE")
         	end
         	goto reverse_hopping_begin
         end
@@ -199,12 +200,15 @@ local function reverse_traceroute(trace,cmptrace)
 				trace['rst'] = TR_RESULT_DESIGN
 			end
 			if VERBOSE >= 1 then
-				io.write("reverse_traceroute BNP ","current ip has same hop with cmptrace on ttl = ",ttl," return\n")
+				io.write("reverse_traceroute BNP, ","current ip has same hop with cmptrace on ttl = ",ttl," return\n")
 			end
 			return 1
 		end
 		::reverse_hopping_begin::
 		ttl=ttl-1
+	end
+	if VERBOSE >= 1 then
+		io.write("reverse_traceroute ttl arrive 1, return\n")
 	end
 	trace['start']=1
 	if trace['rst'] == 0 then
@@ -266,7 +270,7 @@ local function forward_traceroute(trace,cmptrace)
 					trace['end']=ttl
 					trace['rst']=TR_RESULT_TIMEOUT
 					if VERBOSE >= 1 then
-						print("forward_traceroute NNS by cmptrace, cmptrace stop on this ttl timeout, and this ip ",trace['dst']," timeout as well as cmptrace on this ttl= ",ttl," NNS stop.")
+						io.write("forward_traceroute NNS by cmptrace, cmptrace stop on this ttl timeout, and this ip ",trace['dst']," timeout as well as cmptrace on this ttl= ",ttl,", NNS stop.\n")
 					end
 					return 1
 				end
@@ -287,7 +291,7 @@ local function forward_traceroute(trace,cmptrace)
 						print("TOH OK")
 					end
 					if VERBOSE >= 1 then
-						print("forward_traceroute TR_RESULT_TIMEOUT, ttl:",ttl,"no result ON continue ",timeout_hops,"hops, stop.")
+						io.write("forward_traceroute TR_RESULT_TIMEOUT, ttl:",ttl,"no result ON continue ",timeout_hops,"hops, stop.\n")
 					end
 					---print("!TR_RESULT_TIMEOUT:",ttl,"timeout:",timeout,timeout_hops)
 					return 1
@@ -312,7 +316,7 @@ local function forward_traceroute(trace,cmptrace)
 						trace['end']=ttl
 						trace['rst']=TR_RESULT_LOOP
 						if VERBOSE >= 1 then
-							print("forward_traceroute TR_RESULT_LOOP ")
+							io.write("forward_traceroute TR_RESULT_LOOP, ttl from ",i," to ",ttl," LOOP\n")
 						end
 						---print("TR_RESULT_LOOP:",ttl,"from:",from)
 						return 1
@@ -335,7 +339,7 @@ local function forward_traceroute(trace,cmptrace)
 							trace['end'] = ttl
 							trace['rst'] = TR_RESULT_DESIGN
 							if VERBOSE >= 1 then
-								print("forward_traceroute TR_RESULT_DESIGN compare_each_from,current ttl:",ttl,"cmptrace hop:",i)
+								io.write("forward_traceroute TR_RESULT_DESIGN, compare_each_from,current ttl: ",ttl," cmptrace hop:",i," .\n")
 							end
 							--TODO:right or not
 							for j = ttl + 1 , cmptrace['end'] - i + ttl  do 	--将i之后的结果，拷贝到trace中
@@ -352,7 +356,7 @@ local function forward_traceroute(trace,cmptrace)
 						trace['end'] = ttl
 						trace['rst'] = TR_RESULT_LOOP
 						if VERBOSE >= 1 then
-							print("forward_traceroute TR_RESULT_LOOP by cmptrace")
+							io.write("forward_traceroute TR_RESULT_LOOP by cmptrace, cmptrace stop by LOOP on ",ttl," and both hop same on the ttl,stop.\n")
 						end
 						return 1
 					end
@@ -370,7 +374,7 @@ local function forward_traceroute(trace,cmptrace)
 				trace['end'] = ttl
 				trace['rst'] = TR_RESULT_UNREACH
 				if VERBOSE >= 1 then
-					print("forward_traceroute TR_RESULT_UNREACH return")
+					print("forward_traceroute TR_RESULT_UNREACH, receive icmp unreach message, return.")
 				end
 				return 1
 			end
@@ -382,7 +386,7 @@ local function forward_traceroute(trace,cmptrace)
 			trace['end']=ttl
 			trace['rst']=TR_RESULT_GOTTHERE
 			if VERBOSE >= 1 then
-				print("forward_traceroute TR_RESULT_GOTTHERE return")
+				io.write("forward_traceroute TR_RESULT_GOTTHERE, ttl= ",ttl, " arrive target, return.\n")
 			end
 			return 1
 		end
@@ -395,7 +399,7 @@ local function forward_traceroute(trace,cmptrace)
 	trace['end']=MAX_HOP
 	trace['rst']=TR_RESULT_MAXHOP
 	if VERBOSE >= 1 then
-		print("forward_traceroute MAX_HOP return")
+		print("forward_traceroute arrive MAX_HOP return.")
 	end
 	return 1
 end
@@ -438,6 +442,9 @@ function forward_reverse(trace,fcmptrace,rcmptrace)
 		return -1
 	end
 	if trace['rst'] ~= TR_RESULT_DESIGN then 			--原因能是：在 reverse_traceroute 中到达目标 TR_RESULT_GOTTHERE
+		if VERBOSE >=1 then
+			io.write('forward_reverse, arrive target in reverse_traceroute,real end: ',trace['end']," before end: ",fend,"\n")
+		end
 		return 1
 	end
 	if result == TR_RESULT_TIMEOUT then
@@ -454,8 +461,18 @@ function forward_reverse(trace,fcmptrace,rcmptrace)
 	end
 	return 1
 end
+local function print_all_node_link()
+	print("^^^^^^^^^^^^^^^global_node^^^^^^^^^^^^^^^^^^")
+	for k,v in pairs(global_node) do
+		print(k)
+	end
+	print("^^^^^^^^^^^^^^^global_link^^^^^^^^^^^^^^^^^^")
+	for k,v in pairs(global_link_hashmap) do
+		print(k)
+	end
+end
 local function get_new_link_node_number(trace)
-	local new_link=0
+	local new_link = 0
 	local new_node = 0
 	local link_key
 	if DEBUG == 1 or VERBOSE>=3 then
@@ -463,23 +480,23 @@ local function get_new_link_node_number(trace)
 		for k,v in pairs(global_node) do
 			print("global_node:",k)
 		end
-		print("^^^^^^^^^^^^^^^global_node^^^^^^^^^^^^^^^^^^")
+		print("^^^^^^^^^^^^^^^global_link^^^^^^^^^^^^^^^^^^")
 		for k,v in pairs(global_link_hashmap) do
 			print("global_link_hashmap:",k)
 		end
-		print("***********new link node discovery************")
 	end
 	for i = trace['start'],trace['end']-1 do
 		if trace['hop'][i] ~= 0 and trace['hop'][i+1] ~= 0 then 					--中间node为 0 的略过
 			if ipOps.compare_ip(trace['hop'][i],'gt',trace['hop'][i+1]) == true then
-				link_key=trace['hop'][i+1]..'.'..trace['hop'][i]
+				link_key=trace['hop'][i+1]..'-'..trace['hop'][i]
 			else
-				link_key=trace['hop'][i]..'.'..trace['hop'][i+1]
+				link_key=trace['hop'][i]..'-'..trace['hop'][i+1]
 			end
 			if global_link_hashmap[link_key] == nil then
+				ALL_LINK=ALL_LINK+1
 				new_link= new_link + 1
 				global_link_hashmap[link_key] = 1
-				if DEBUG == 1 or VERBOSE>=3 then
+				if DEBUG == 1 or VERBOSE>=2 then
 					io.write('new link:',trace['hop'][i],' ~~~~~~~~~~~~~~~~ ',trace['hop'][i+1],"\n")
 				end
 				-- return 1
@@ -487,15 +504,17 @@ local function get_new_link_node_number(trace)
 		end
 		if trace['hop'][i] ~= 0 and global_node[trace['hop'][i]] == nil then
 			new_node = new_node + 1
+			ALL_NODE = ALL_NODE +1
 			global_node[trace['hop'][i]] = 1
 			if DEBUG == 1 or VERBOSE >=2 then
 				io.write('new node:',trace['hop'][i],"\n")
 			end
+
 			-- return 1
 		end
 	end
-	if DEBUG == 1 then
-		print("***********new link node end************",new_link,new_node)
+	if DEBUG == 1 or VERBOSE>=1 then
+		print("***********find new link, node************",new_link,new_node)
 	end
 	return new_link,new_node
 end
@@ -507,8 +526,8 @@ local function normal_traceroute(dst_ip)
 		io.write("Fastrace ",dst_ip,"/32"," at ",os.date("%Y-%m-%d %H:%M:%S"),"\n")
 	end
 	forward_traceroute(trace,nil)
-	print_tr(trace)
 	get_new_link_node_number(trace) 		--更新已获取边，节点
+	print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 end
 local function copy_tracehop(tracedst,tracesrc,ttls,ttle)
 	--copy from reverse_traceroute
@@ -526,8 +545,8 @@ local function compare_endrouter(trace1,trace2)
 	if trace1['end'] < 2 then
 		return 0
 	end
-	if trace1['end'] == trace2['end'] then 
-		if trace1['hop'][trace1['end'] - 1] == trace2['hop'][trace2['end'] - 1] then
+	if trace1['end'] == trace2['end'] then --IMPORVE:末跳都为零时，不算末跳相等
+		if trace1['hop'][trace1['end'] - 1] ~=0 and trace1['hop'][trace1['end'] - 1] == trace2['hop'][trace2['end'] - 1] then
 			return 0
 		else
 			return 1
@@ -598,13 +617,21 @@ local function treetrace(cidr)
 		newsr['trace']={}
 		if HOSTADDR(oldsr['trace']['dst'],oldsr['pfx'])  == 1 then
 			newsr['trace']['dst'] = IP_DEC(NETADDR(oldsr['trace']['dst'],oldsr['pfx']) + bit.rshift(0xffffffff,oldsr['pfx']))
+			if VERBOSE >= 1 then
+				io.write("|--",oldsr['trace']['dst'],"/",oldsr['pfx'],"-------the first ip on stack top\n")
+				io.write("|--",newsr['trace']['dst'],"/",oldsr['pfx'],"-------get last  ip of subnet\n")
+			end
 		else
 			newsr['trace']['dst'] = IP_INC(NETADDR(oldsr['trace']['dst'],oldsr['pfx']))
+			if VERBOSE >= 1 then
+				io.write("|--",newsr['trace']['dst'],"/",oldsr['pfx'],"-------get first ip of subnet\n")
+				io.write("|--",oldsr['trace']['dst'],"/",oldsr['pfx'],"-------the last  ip on stack top\n")
+			end
 		end 
 		newsr['trace']['start'] = 0			--/* `start' waiting to be set by `oldsr'. */
 		if VERBOSE >= 1 then 
-			io.write('get oldsr on top stack:',oldsr['trace']['dst'],"/",oldsr['pfx'],"\n")
-			io.write('get newsr by oldsr:',newsr['trace']['dst'],"/",oldsr['pfx'],"\n")
+			-- io.write('get oldsr on top stack:',oldsr['trace']['dst'],"/",oldsr['pfx'],"\n")
+			-- io.write('get newsr by oldsr:',newsr['trace']['dst'],"/",oldsr['pfx'],"\n")
 			io.write("Fastrace ",newsr['trace']['dst'],"/",oldsr['pfx']," at ",os.date("%Y-%m-%d %H:%M:%S"),"\n")
 		end
 		if forward_reverse(newsr['trace'],oldsr['trace'],oldsr['trace']) == -1 then
@@ -624,10 +651,19 @@ local function treetrace(cidr)
 		--比较末跳路由，如果一致，则认为在同一子网
 		if compare_endrouter(newsr['trace'],oldsr['trace']) == 0 and oldsr['pfx'] >= MIN_PREFIX_LEN then
 			s:pop()
+
 			if VERBOSE >= 1 then
-				print("SAME SUBNET:",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx'])),oldsr['pfx'])
+				io.write("SAME SUBNET: new ip has same last hop with old ip,pop()",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx'])),"/",oldsr['pfx'],"\n")
+				io.write(oldsr['trace']['dst']," last hop: ",oldsr['trace']['hop'][oldsr['trace']['end'] - 1],"\n")
+				io.write(newsr['trace']['dst']," last hop: ",newsr['trace']['hop'][newsr['trace']['end'] - 1],"\n")
+				io.write("|--",oldsr['trace']['dst'],"/",oldsr['pfx'],"----the subnet\n")
+				io.write("|--",oldsr['trace']['dst'],"-------the first ip of subnet\n")
+				io.write("|--",newsr['trace']['dst'],"-------get last  ip of subnet\n")
+				-- io.write("|--",oldsr['trace']['dst'],"/",oldsr['pfx'],"----the old ip pop()\n")
+				-- io.write("|--",newsr['trace']['dst'],"-------the another ip of the subnet","\n")
 			end
-			print_tr(oldsr['trace'])
+			print_tr(oldsr['trace'],iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
+			print_tr(newsr['trace'],iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			oldsr={}
 			newsr={}
 			goto TREETRACE_WHILE
@@ -636,13 +672,16 @@ local function treetrace(cidr)
 		if newsr['find_new'] == 0 and oldsr['find_new'] == 0 and oldsr['pfx'] >= MIN_NO_NEW_PREFIX then
 			s:pop()
 			if VERBOSE >= 1 then
-				print("SUBNET No new links found, subnet:")
-				io.write("|",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx'])),"/",oldsr['pfx'],"\n")
-				io.write("|--",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx']+1)),"/",oldsr['pfx']+1,"\n")
-				io.write("|--",fastrace_fromdword(NETADDR(newsr['trace']['dst'],oldsr['pfx']+1)),"/",oldsr['pfx']+1,"\n")
+				print("SUBNET No new links found pop(), subnet:")
+				io.write("|--",oldsr['trace']['dst'],"/",oldsr['pfx'],"----the subnet\n")
+				io.write("|--",oldsr['trace']['dst'],"-------the first ip of subnet\n")
+				io.write("|--",newsr['trace']['dst'],"-------get last  ip of subnet\n")
+				-- io.write("|",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx'])),"/",oldsr['pfx'],"\n")
+				-- io.write("|--",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx']+1)),"/",oldsr['pfx']+1,"\n")
+				-- io.write("|--",fastrace_fromdword(NETADDR(newsr['trace']['dst'],oldsr['pfx']+1)),"/",oldsr['pfx']+1,"\n")
 			end
-			print_tr(oldsr['trace'])
-			print_tr(newsr['trace'])
+			print_tr(oldsr['trace'],iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
+			print_tr(newsr['trace'],iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			oldsr={}
 			newsr={}
 			goto TREETRACE_WHILE
@@ -650,14 +689,17 @@ local function treetrace(cidr)
 		if (oldsr['pfx'] + 1) >= MAX_PREFIX_LEN then
 			s:pop()
 			if VERBOSE >= 1 then
-				print("SUBNET max prefix lenth:",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
+				print("SUBNET arrive max prefix lenth,pop()\n")
+				io.write("|--",oldsr['trace']['dst'],"/",oldsr['pfx'],"----the subnet\n")
+				io.write("|--",oldsr['trace']['dst'],"-------the first ip of subnet\n")
+				io.write("|--",newsr['trace']['dst'],"-------get last  ip of subnet\n")
 			end
-			print_tr(oldsr['trace'])
+			print_tr(oldsr['trace'],iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			--TODO:last_hop_test
-			if VERBOSE >= 1 then
-				print("SUBNET max prefix lenth:",fastrace_fromdword(NETADDR(newsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
-			end
-			print_tr(newsr['trace'])
+			-- if VERBOSE >= 1 then
+			-- 	print("SUBNET arrive max prefix lenth,pop():",fastrace_fromdword(NETADDR(newsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
+			-- end
+			print_tr(newsr['trace'],iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			oldsr={}
 			newsr={}
 			goto TREETRACE_WHILE
@@ -666,8 +708,13 @@ local function treetrace(cidr)
 		newsr['pfx']=oldsr['pfx']
 		s:push(newsr)
 		if VERBOSE >= 1 then
-			print("Stack PUSH",newsr['trace']['dst'],newsr['pfx'])
-			print("")
+			io.write("Tree continue to expand","\n")
+			io.write("                  	|---",oldsr['trace']['dst'],"/",oldsr['pfx'],"-----this on top of stack\n")
+			io.write("|",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx']-1)),"/",oldsr['pfx']-1,"----\n")
+			
+			io.write("                  	|---",newsr['trace']['dst'],"/",newsr['pfx'],"-----this will push to stack\n")
+
+			io.write("Stack PUSH ",newsr['trace']['dst'],"/",newsr['pfx'],"\n")
 		end
 		::TREETRACE_WHILE::
 	end --end for while
@@ -740,9 +787,16 @@ action=function()
 	MAX_PREFIX_LEN=tonumber(MAX_PREFIX_LEN)
 	MIN_PREFIX_LEN=tonumber(MIN_PREFIX_LEN)
 	MIN_NO_NEW_PREFIX=tonumber(MIN_NO_NEW_PREFIX)
-
+	--结果输出文件
+	OUTPUT_TYPE=stdnse.get_script_args("output_type")
+	OUTPUT_FILE_HANDLER=""
+	-- print(OUTPUT_TYPE)
+	if OUTPUT_TYPE == "file" then
+		OUTPUT_FILENAME=stdnse.get_script_args("output_filename")
+		OUTPUT_FILE_HANDLER=io.open(OUTPUT_FILENAME,'w')
+	end
 	DEBUG=0
-	print("verbose,debug:",VERBOSE,DEBUG)
+	-- print("verbose,debug:",VERBOSE,DEBUG)
 	global_link_hashmap={}
 	global_node={}
 	-- VERBOSE=1
@@ -750,7 +804,8 @@ action=function()
 		if dst_ip then
 			local ip, err = ipOps.expand_ip(dst_ip)
 			if not err then
-				quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
+				local trace=quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
+				--print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			else
 				return fail("error:illege ip")
 			end
@@ -873,7 +928,7 @@ action=function()
 
 	if dst_ip then
 		local cidr = str2cidr(dst_ip)
-		print(cidr['net'],cidr['pfx'])
+		-- print(cidr['net'],cidr['pfx'])
 		local temp, err = ipOps.expand_ip(cidr['net'])
 		if err or dst_ip:match( ":" ) ~= nil then
 			print("error:illege ip",cidr['net'])
@@ -888,6 +943,8 @@ action=function()
 		else
 			print("error cidr format:",dst_ip)
 		end
+		print_all_node_link()
+		io.write("ALL_LINK: ",ALL_LINK," ALL_NODE: ",ALL_NODE,"\n")
 	elseif ip_file then 	--目标为文件
 		for line in io.lines(ip_file) do
 			local ip=stdnse.strsplit(" ", line)
@@ -909,14 +966,19 @@ action=function()
 				print("error:illege ip",cidr['net'])
 			end
 		end--end for
+		print_all_node_link()
+		io.write("ALL_LINK: ",ALL_LINK," ALL_NODE: ",ALL_NODE,"\n")
 	else
 	end
+	print("ALL_SEND_PACKET:",ALL_SEND_PACKET)
 	-- local s = Stack:new()
 	-- s:push(1)
 	-- s:push(2)
 	-- print(s:top())
 	-- s:printElement()
 	send_l3_sock:ip_close()
-
+	if OUTPUT_TYPE == "file" then
+		OUTPUT_FILE_HANDLER:close()
+	end
 	return true
 end

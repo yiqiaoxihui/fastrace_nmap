@@ -237,18 +237,33 @@ TRR2STRING = {
     "Reach max hop",
     "Route loop",
     "Fake source address",
-    "End by design"
+    "End by design",
+    "Quick trace",
 }
-print_tr = function(tr)
+
+OUTPUT_FILENAME		="fastrace.out"
+-- OUTPUT_FILE_HANDLER	=nil
+OUTPUT_TYPE			="stdout"
+print_tr = function(tr,src_ip,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
     local i
-    io.write("Target ",tr['dst'] , " hop ",tr['start']," - ",tr['end'] ," ",TRR2STRING[tr['rst']+1],"\n") 	--加1 table从1开始
+    -- print(OUTPUT_TYPE)
+    if OUTPUT_TYPE == "file" then
+		-- fw=io.open(OUTPUT_FILENAME,'w')
+		OUTPUT_FILE_HANDLER:write("Target ",tr['dst'] , " hop ",tr['start']," - ",tr['end'] ," from ",src_ip," ",TRR2STRING[tr['rst']+1],"\n")
+	end
+    io.write("Target ",tr['dst'] , " hop ",tr['start']," - ",tr['end'] ," from ",src_ip," ",TRR2STRING[tr['rst']+1],"\n") 	--加1 table从1开始
     if (tr['start'] <= 0 or tr['end'] <= 0) then
         return
     end 
     for i= tr['start'],tr['end'] do
+    	if OUTPUT_TYPE == "file" then
+	    	OUTPUT_FILE_HANDLER:write(i," ",tr['hop'][i]," ",tr['reply_ttl'][i]," ",tr['rtt'][i],"ms\n")
+    	end
     	io.write("~ ",i," ",tr['hop'][i]," ",tr['reply_ttl'][i]," ",tr['rtt'][i],"ms\n")
+    	
     end
 end
+
 PTYPE2STRING = {
     "I-EQ",
     "TACK",
@@ -293,11 +308,11 @@ print_ri = function(pi,rpk_type,from,rtt,reply_ttl)
 end
 PROBING_TYPE_ARRAY	=	{
 	PPK_SYN,	PPK_UDPBIGPORT,	PPK_ICMPECHO,
-	PPK_SYN,	PPK_SYN,	PPK_SYN,
-	PPK_UDPBIGPORT,	PPK_UDPBIGPORT,	PPK_UDPBIGPORT,
-	PPK_ICMPECHO,	PPK_ICMPECHO,	PPK_ICMPECHO,
-	PPK_SYN,	PPK_ACK,	PPK_SYN,
-	PPK_ICMPECHO,	PPK_SYN,	PPK_SYN
+	PPK_SYN,	PPK_UDPBIGPORT,	PPK_ICMPECHO,--PPK_SYN,	PPK_SYN,	PPK_SYN,
+	PPK_SYN,	PPK_UDPBIGPORT,	PPK_ICMPECHO,--PPK_UDPBIGPORT,	PPK_UDPBIGPORT,	PPK_UDPBIGPORT,
+	PPK_SYN,	PPK_UDPBIGPORT,	PPK_ICMPECHO,--PPK_ICMPECHO,	PPK_ICMPECHO,	PPK_ICMPECHO,
+	PPK_SYN,	PPK_UDPBIGPORT,	PPK_ICMPECHO,--PPK_SYN,	PPK_ACK,	PPK_SYN,
+	PPK_SYN,	PPK_UDPBIGPORT,	PPK_ICMPECHO,--PPK_ICMPECHO,	PPK_SYN,	PPK_SYN
 }
 --traceroute UDP dport 53
 PROBING_DPORT_ARRAY	=	{
@@ -329,7 +344,7 @@ UDP_HEAD_SIZE		=8
 TCP_HEAD_SIZE		=20
 
 MAX_PREFIX_LEN 		= 30
-MIN_PREFIX_LEN 		= 20
+MIN_PREFIX_LEN 		= 25
 MIN_NO_NEW_PREFIX 	= 24
 
 VERBOSE				=0
@@ -337,3 +352,10 @@ DEBUG 				=0
 
 PACKET_TYPE 		="MIX"
 LAST_N_HOP_NUMBER	=4
+
+ALL_LINK			=0	--all link we find
+ALL_NODE			=0	--all node we found
+ALL_SEND_PACKET		=0	--all packet send
+
+RECURSION_TRACE		=0
+

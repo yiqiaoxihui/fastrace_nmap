@@ -55,6 +55,7 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 			icmp_code=l3_rpk_packet['icmp_code']
 			--ping reply
 			if icmp_type == 0 and icmp_code ==0 then
+				print("RPK_ICMPECHO",echo_id)
 				--echo_id=l3_rpk_packet['echo_id']
 				echo_id=l3_rpk_packet:u16(l3_rpk_packet.icmp_offset + 4)
 				if VERBOSE >= 1 then
@@ -62,6 +63,7 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 				end
 				if echo_id ~= nil and trace['echo_id'][echo_id] ~= nil then
 					send_ttl = trace['echo_id'][echo_id]
+					print("test",send_ttl,trace['end'])
 					if trace['end'] > send_ttl then
 						trace['end'] = send_ttl
 					end
@@ -144,6 +146,7 @@ end
 function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
 	--建立发送l3层报文的raw socket
 	--用于发送设置了ttl的探测末跳报文
+	-- print("quicktrace：",VERBOSE)
 	local send_l3_sock = nmap.new_dnet()
 	send_l3_sock:ip_open()
 
@@ -181,7 +184,7 @@ function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
 		trace['hop'][i]['rtt']=0
 		trace['hop'][i]['reply_ttl']=0
 		if VERBOSE >= 1 then
-			io.write("send ping packet ",i," ",echo_id,"\n")
+			io.write("--send ping packet ",i," ",echo_id,"\n")
 		end
 		set_ttl_to_ping(trace,i,echo_id,send_l3_sock,iface.device)
 	end
@@ -197,11 +200,29 @@ function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
 			icmp_reply_listener_condvar("wait")
 		end
 	until icmp_reply_listener_handler==nil
-	io.write("Target ",dst_ip , " hop ",1," - ",trace['end'] ,"\n")
+
+	local return_trace={}
+	return_trace['hop']={}
+	return_trace['rtt']={}
+	return_trace['reply_ttl']={}
+	return_trace['start']=1
+	return_trace['end']=trace['end']
+	return_trace['dst']=dst_ip
+	return_trace['rst']=8 --quicktrace type
+	if VERBOSE >= 1 then
+		io.write("Quicktrace: ",dst_ip , " hop ",1," - ",trace['end'] ,"\n")
+	end
 	for i =1,trace['end'] do
-		io.write(i,' ',trace['hop'][i]['from']," ",trace['hop'][i]['reply_ttl']," ",trace['hop'][i]['rtt'],"ms\n")
+		return_trace['hop'][i]=trace['hop'][i]['from']
+		return_trace['rtt'][i]=trace['hop'][i]['rtt']
+		return_trace['reply_ttl'][i]=trace['hop'][i]['reply_ttl']
+		if VERBOSE >= 1 then
+			io.write(i,' ',trace['hop'][i]['from']," ",trace['hop'][i]['reply_ttl']," ",trace['hop'][i]['rtt'],"ms\n")
+		end
 	end
 	send_l3_sock:ip_close()
+
+	return return_trace
 end
 
 return quicktrace
