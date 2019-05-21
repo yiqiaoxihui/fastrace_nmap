@@ -257,7 +257,7 @@ print_tr = function(tr,src_ip,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
     end 
     for i= tr['start'],tr['end'] do
     	if OUTPUT_TYPE == "file" then
-	    	OUTPUT_FILE_HANDLER:write(i," ",tr['hop'][i]," ",tr['reply_ttl'][i]," ",tr['rtt'][i],"ms\n")
+	    	OUTPUT_FILE_HANDLER:write("~ ",i," ",tr['hop'][i]," ",tr['reply_ttl'][i]," ",tr['rtt'][i],"ms\n")
     	end
     	io.write("~ ",i," ",tr['hop'][i]," ",tr['reply_ttl'][i]," ",tr['rtt'][i],"ms\n")
     	

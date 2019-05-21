@@ -11,7 +11,7 @@ quicktrace={}
 
 --1. l3 packet table中没有echo_id,使用l3_rpk_packet:u16(l3_rpk_packet.icmp_offset + 4)获取
 --2.忘记加括号导致过滤器无法获取echo reply
-function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signal,device,VERBOSE)
+function quicktrace_icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signal,device,VERBOSE)
 	local rpk_type			--返回包类型
 	local from 				--返回包ip
 	local rtt 				--往返时延
@@ -55,7 +55,6 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 			icmp_code=l3_rpk_packet['icmp_code']
 			--ping reply
 			if icmp_type == 0 and icmp_code ==0 then
-				print("RPK_ICMPECHO",echo_id)
 				--echo_id=l3_rpk_packet['echo_id']
 				echo_id=l3_rpk_packet:u16(l3_rpk_packet.icmp_offset + 4)
 				if VERBOSE >= 1 then
@@ -63,7 +62,6 @@ function icmp_reply_listener(dst_ip,trace,send_l3_sock,icmp_reply_listener_signa
 				end
 				if echo_id ~= nil and trace['echo_id'][echo_id] ~= nil then
 					send_ttl = trace['echo_id'][echo_id]
-					print("test",send_ttl,trace['end'])
 					if trace['end'] > send_ttl then
 						trace['end'] = send_ttl
 					end
@@ -168,7 +166,7 @@ function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
 	local icmp_reply_listener_condvar = nmap.condvar(icmp_reply_listener_signal)
 	icmp_reply_listener_signal['status']=0 	--监听结束信号
 	icmp_reply_listener_signal['icmp_pu']=0 	--是否收到icmp端口不可达信号
-	local icmp_reply_listener_handler=stdnse.new_thread(icmp_reply_listener,dst_ip,trace,send_l3_sock,icmp_reply_listener_signal,iface.device,VERBOSE)
+	local icmp_reply_listener_handler=stdnse.new_thread(quicktrace_icmp_reply_listener,dst_ip,trace,send_l3_sock,icmp_reply_listener_signal,iface.device,VERBOSE)
 	stdnse.sleep(1)
 
 	local echo_seq

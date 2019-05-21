@@ -805,7 +805,7 @@ action=function()
 			local ip, err = ipOps.expand_ip(dst_ip)
 			if not err then
 				local trace=quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
-				--print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
+				print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			else
 				return fail("error:illege ip")
 			end
