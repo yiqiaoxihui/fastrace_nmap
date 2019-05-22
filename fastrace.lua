@@ -524,6 +524,7 @@ local function last_n_hop_is_new(trace)
 			if  i < (trace['end']-1) and (trace['end']-1)-i <= 2 then
 				if IMPROVE >=1 then
 					if VERBOSE >= 1 then 
+						io.write("IMPROVE last_n_hop_is_new, end: ",trace['end'],"hop ",i," :","\n")
 						io.write("IMPROVE last_n_hop_is_new, end: ",trace['end'],"hop ",i," :",trace['hop'][i],"\n")
 					end
 					local qtrace=quicktrace.quicktrace_main(trace['hop'][i],iface,VERBOSE)
@@ -533,9 +534,6 @@ local function last_n_hop_is_new(trace)
 			end
 			ALL_NODE = ALL_NODE +1
 			global_node[trace['hop'][i]] = 1
-			if DEBUG == 1 or VERBOSE >=2 then
-				io.write("IMPROVE last_n_hop_is_new\n")
-			end
 			-- return 1
 		end
 	end
