@@ -503,16 +503,7 @@ local function get_new_link_node_number(trace)
 			end
 		end
 		if trace['hop'][i] ~= 0 and global_node[trace['hop'][i]] == nil then
-			--IMPROVE:对新发现的最后几个新发现的节点也trace
-			if  i < (trace['end']-1) and (trace['end']-1)-i <= 2 then
-				if IMPROVE >=1 then
-					if VERBOSE >= 1 then 
-						io.write("IMPROVE get_new_link_node_number\n")
-					end
-					local trace=quicktrace.quicktrace_main(trace['hop'][i],iface,VERBOSE)
-					print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
-				end
-			end
+			
 			new_node = new_node + 1
 			ALL_NODE = ALL_NODE +1
 			global_node[trace['hop'][i]] = 1
@@ -527,6 +518,29 @@ local function get_new_link_node_number(trace)
 		print("***********find new link, node************",new_link,new_node)
 	end
 	return new_link,new_node
+end
+local function last_n_hop_is_new(trace)
+	for i=(trace['end']-1)-2,trace['end']-1 do
+		if trace['hop'][i] ~= 0 and global_node[trace['hop'][i]] == nil then
+			--IMPROVE:对新发现的最后几个新发现的节点也trace
+			if  i < (trace['end']-1) and (trace['end']-1)-i <= 2 then
+				if IMPROVE >=1 then
+					if VERBOSE >= 1 then 
+						io.write("IMPROVE get_new_link_node_number\n")
+					end
+					local trace=quicktrace.quicktrace_main(trace['hop'][i],iface,VERBOSE)
+					get_new_link_node_number(trace)		--再次统计新节点和边
+					print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
+				end
+			end
+			ALL_NODE = ALL_NODE +1
+			global_node[trace['hop'][i]] = 1
+			if DEBUG == 1 or VERBOSE >=2 then
+				io.write("IMPROVE last_n_hop_is_new\n")
+			end
+			-- return 1
+		end
+	end
 end
 local function normal_traceroute(dst_ip)
 	local trace={}
@@ -654,6 +668,8 @@ local function treetrace(cidr)
 		else
 			newsr['find_new'] = 0
 		end
+		--IMPROVE:对新发现的最后几个新发现的节点也trace
+		last_n_hop_is_new(newsr['trace'])
 		copy_tracehop(newsr['trace'],oldsr['trace'],1,newsr['trace']['start']-1)
 		if newsr['trace']['rst'] == TR_RESULT_LOOP or newsr['trace']['rst'] ==TR_RESULT_MAXHOP then
 			search_loop(newsr['trace'])
@@ -667,6 +683,7 @@ local function treetrace(cidr)
 					io.write("IMPROVE compare_endrouter\n")
 				end
 				local trace=quicktrace.quicktrace_main(MID_IP(oldsr['trace']['dst'],oldsr['pfx']),iface,VERBOSE)
+				get_new_link_node_number(trace)
 				print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			end
 			if VERBOSE >= 1 then
@@ -808,15 +825,15 @@ action=function()
 	--结果输出文件
 	OUTPUT_TYPE=stdnse.get_script_args("output_type")
 	OUTPUT_FILE_HANDLER=""
-	--是否使用改善方案
-	IMPROVE=stdnse.get_script_args("improve")
-	IMPROVE=tonumber(IMPROVE)
 	-- print("IMPROVE",IMPROVE)
 	-- print(OUTPUT_TYPE)
 	if OUTPUT_TYPE == "file" then
 		OUTPUT_FILENAME=stdnse.get_script_args("output_filename")
 		OUTPUT_FILE_HANDLER=io.open(OUTPUT_FILENAME,'w')
 	end
+	--是否使用改善方案
+	IMPROVE=stdnse.get_script_args("improve")
+	IMPROVE=tonumber(IMPROVE)
 	DEBUG=0
 	-- print("verbose,debug:",VERBOSE,DEBUG)
 	global_link_hashmap={}
