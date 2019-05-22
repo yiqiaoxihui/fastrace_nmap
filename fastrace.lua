@@ -125,7 +125,6 @@ local function reverse_traceroute(trace,cmptrace)
 	local rpk_type				--返回包类型
 	local code					--ICMP错误代码
 	local from					--探测回复的源ip
-	local timeout=0				--探测超时计数器
 	local rtt
 	local reply_ttl
 	try =3
@@ -147,7 +146,6 @@ local function reverse_traceroute(trace,cmptrace)
 			-- ttl=ttl-1
 			goto reverse_hopping_begin
 		end
-		timeout=0
 		trace['hop'][ttl] = from
 		trace['rtt'][ttl]=rtt
 		trace['reply_ttl'][ttl]=reply_ttl
@@ -526,11 +524,11 @@ local function last_n_hop_is_new(trace)
 			if  i < (trace['end']-1) and (trace['end']-1)-i <= 2 then
 				if IMPROVE >=1 then
 					if VERBOSE >= 1 then 
-						io.write("IMPROVE get_new_link_node_number\n")
+						io.write("IMPROVE last_n_hop_is_new, end: ",trace['end'],"hop ",i," :",trace['hop'][i],"\n")
 					end
-					local trace=quicktrace.quicktrace_main(trace['hop'][i],iface,VERBOSE)
-					get_new_link_node_number(trace)		--再次统计新节点和边
-					print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
+					local qtrace=quicktrace.quicktrace_main(trace['hop'][i],iface,VERBOSE)
+					get_new_link_node_number(qtrace)		--再次统计新节点和边
+					print_tr(qtrace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 				end
 			end
 			ALL_NODE = ALL_NODE +1
