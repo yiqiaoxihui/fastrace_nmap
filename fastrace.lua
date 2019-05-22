@@ -524,7 +524,7 @@ local function last_n_hop_is_new(trace)
 			if  i < (trace['end']-1) and (trace['end']-1)-i <= 2 then
 				if IMPROVE >=1 then
 					if VERBOSE >= 1 then 
-						io.write("IMPROVE last_n_hop_is_new, end: ",trace['end'],"hop ",i," :","\n")
+						-- io.write("IMPROVE last_n_hop_is_new, end: ",trace['end'],"hop ",i," :","\n")
 						io.write("IMPROVE last_n_hop_is_new, end: ",trace['end'],"hop ",i," :",trace['hop'][i],"\n")
 					end
 					local qtrace=quicktrace.quicktrace_main(trace['hop'][i],iface,VERBOSE)
@@ -664,12 +664,13 @@ local function treetrace(cidr)
 		else
 			newsr['find_new'] = 0
 		end
-		--IMPROVE:对新发现的最后几个新发现的节点也trace
-		last_n_hop_is_new(newsr['trace'])
+
 		copy_tracehop(newsr['trace'],oldsr['trace'],1,newsr['trace']['start']-1)
 		if newsr['trace']['rst'] == TR_RESULT_LOOP or newsr['trace']['rst'] ==TR_RESULT_MAXHOP then
 			search_loop(newsr['trace'])
 		end
+		--IMPROVE:对新发现的最后几个新发现的节点也trace,但必须在copy_tracehop之后
+		last_n_hop_is_new(newsr['trace'])
 		--比较末跳路由，如果一致，则认为在同一子网
 		if compare_endrouter(newsr['trace'],oldsr['trace']) == 0 and oldsr['pfx'] >= MIN_PREFIX_LEN then
 			s:pop()
