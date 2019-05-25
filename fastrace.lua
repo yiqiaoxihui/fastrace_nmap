@@ -518,8 +518,9 @@ local function get_new_link_node_number(trace)
 	return new_link,new_node
 end
 local function last_n_hop_is_new(trace)
+	io.write("IMPROVE last_n_hop_is_new\n")
 	for i=(trace['end']-1)-2,trace['end']-1 do
-		if trace['hop'][i] ~= 0 and global_node[trace['hop'][i]] == nil then
+		if trace['hop'][i] ~= nil and trace['hop'][i] ~= 0 and global_node[trace['hop'][i]] == nil then
 			--IMPROVE:对新发现的最后几个新发现的节点也trace
 			if  i < (trace['end']-1) and (trace['end']-1)-i <= 2 then
 				if IMPROVE >=1 then
