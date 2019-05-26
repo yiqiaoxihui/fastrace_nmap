@@ -141,7 +141,7 @@ function set_ttl_to_ping(trace,ttl,echo_id,send_l3_sock,device)
 	send_l3_sock:ip_send(ip.buf)
 end
 
-function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
+function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE,begin_hop,end_hop)
 	--建立发送l3层报文的raw socket
 	--用于发送设置了ttl的探测末跳报文
 	-- print("quicktrace：",VERBOSE)
@@ -181,10 +181,12 @@ function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
 		trace['hop'][i]['from']=0
 		trace['hop'][i]['rtt']=0
 		trace['hop'][i]['reply_ttl']=0
-		if VERBOSE >= 1 then
-			io.write("--send ping packet ",i," ",echo_id,"\n")
+		if i>=begin_hop  and i <=end_hop then			--只对指定范围进行，探测
+			if VERBOSE >= 1 then
+				io.write("--send ping packet ",i," ",echo_id,"\n")
+			end
+			set_ttl_to_ping(trace,i,echo_id,send_l3_sock,iface.device)
 		end
-		set_ttl_to_ping(trace,i,echo_id,send_l3_sock,iface.device)
 	end
 	stdnse.sleep(1)
 	repeat

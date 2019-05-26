@@ -373,3 +373,4 @@ RECURSION_TRACE		=0
 
 IMPROVE				=0
 
+REDUNDANCE_COUNT	=0 --tree trace 冗余数量

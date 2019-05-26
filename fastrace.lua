@@ -556,6 +556,7 @@ local function copy_tracehop(tracedst,tracesrc,ttls,ttle)
 		tracedst['hop'][i] = tracesrc['hop'][i]
 		tracedst['rtt'][i]=tracesrc['rtt'][i]
 		tracedst['reply_ttl'][i]=tracesrc['reply_ttl'][i]
+		REDUNDANCE_COUNT=REDUNDANCE_COUNT+1
 	end
 	tracedst['start']=ttls
 end
@@ -563,8 +564,8 @@ local function compare_endrouter(trace1,trace2)
 	if trace1['rst'] == TR_RESULT_DESIGN or trace2['rst'] == TR_RESULT_DESIGN then
 		return -1
 	end
-	if trace1['end'] < 2 then
-		return 0
+	if trace1['end'] <= 2 then
+		return 1 			--IMPROVE:少于2跳的，认为未到达目标，继续探测
 	end
 	if trace1['end'] == trace2['end'] then --IMPROVE:末跳都为零时，不算末跳相等
 		if trace1['hop'][trace1['end'] - 1] ~=0 and trace1['hop'][trace1['end'] - 1] == trace2['hop'][trace2['end'] - 1] then
@@ -576,7 +577,26 @@ local function compare_endrouter(trace1,trace2)
 	return 1
 	-- body
 end
-
+local function quicktrace_subnet(ip,prefix,hop)
+	local number_ip = ipOps.todword(ip)
+	if not number_ip then
+		print("HOSTADDR:illege ip number:",ip,prefix)
+		return
+	end
+	local begin_ip= bit.band(number_ip,(bit.lshift(0xffffffff,(32-prefix))))
+	local number=bit.rshift(0xffffffff,prefix)
+	if begin_ip+2 > begin_ip+number-1 then 
+		return
+	end
+	for i = begin_ip+2, begin_ip+number-1 do
+		local now_ip=fastrace_fromdword(i)
+		if VERBOSE >=1 then
+			print("IMPROVE quicktrace_subnet:",now_ip,hop-2,hop+2)
+		end
+		local now_trace=quicktrace.quicktrace_main(now_ip,iface,VERBOSE,hop-2,hop+2)
+		get_new_link_node_number(now_trace)
+	end
+end
 local function treetrace(cidr)
 	-- print("verbose:",VERBOSE)
 	--newsr=(fpx => 24,
@@ -680,9 +700,10 @@ local function treetrace(cidr)
 				if VERBOSE >= 1 then 
 					io.write("IMPROVE compare_endrouter\n")
 				end
-				local trace=quicktrace.quicktrace_main(MID_IP(oldsr['trace']['dst'],oldsr['pfx']),iface,VERBOSE)
-				get_new_link_node_number(trace)
-				print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
+				quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
+				-- local trace=quicktrace.quicktrace_main(MID_IP(oldsr['trace']['dst'],oldsr['pfx']),iface,VERBOSE)
+				-- get_new_link_node_number(trace)
+				-- print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			end
 			if VERBOSE >= 1 then
 				io.write("SAME SUBNET: new ip has same last hop with old ip,pop()",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx'])),"/",oldsr['pfx'],"\n")
@@ -841,7 +862,7 @@ action=function()
 		if dst_ip then
 			local ip, err = ipOps.expand_ip(dst_ip)
 			if not err then
-				local trace=quicktrace.quicktrace_main(dst_ip,iface,VERBOSE)
+				local trace=quicktrace.quicktrace_main(dst_ip,iface,VERBOSE,1,30)
 				print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			else
 				return fail("error:illege ip")
@@ -1008,6 +1029,7 @@ action=function()
 	else
 	end
 	print("ALL_SEND_PACKET:",ALL_SEND_PACKET)
+	print("REDUNDANCE_COUNT:",REDUNDANCE_COUNT)
 	-- local s = Stack:new()
 	-- s:push(1)
 	-- s:push(2)
