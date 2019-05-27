@@ -9,6 +9,7 @@ local stdnse = require "stdnse"
 local string = require "string"
 local table = require "table"
 local dns = require "dns"
+local bit = require "bit"
 -- local datetime = require "datetime"
 -- local io = require "io"
 require('base')
