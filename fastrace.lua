@@ -496,7 +496,7 @@ local function get_new_link_node_number(trace)
 				new_link= new_link + 1
 				global_link_hashmap[link_key] = 1
 				if DEBUG == 1 or VERBOSE>=1 then
-					io.write('new link,hop: ',hop," ",trace['hop'][i],' ~~~~~~~~~~~~~~~~ ',trace['hop'][i+1],"\n")
+					io.write('new link,hop: ',i," ",trace['hop'][i],' ~~~~~~~~~~~~~~~~ ',trace['hop'][i+1],"\n")
 				end
 				-- return 1
 			end
