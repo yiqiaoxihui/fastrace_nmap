@@ -723,7 +723,7 @@ local function treetrace(cidr)
 			s:pop()
 			if IMPROVE >=1 then
 				if VERBOSE >= 1 then 
-					io.write("IMPROVE No new links found, pfx,min_no_new_prefix: ",pfx," ",MIN_NO_NEW_PREFIX,"\n")
+					io.write("IMPROVE No new links found, pfx,min_no_new_prefix: ",oldsr['pfx']," ",MIN_NO_NEW_PREFIX,"\n")
 				end
 				quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
 			end
