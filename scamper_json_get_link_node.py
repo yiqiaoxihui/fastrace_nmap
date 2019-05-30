@@ -57,6 +57,8 @@ def get_link_node_from_dir(file):
 								print (hops[i]['probe_ttl']),(hops[i+1]['probe_ttl'])
 								s=hops[i]['addr']
 								d=hops[i+1]['addr']
+								if s == jo['dst'] or d == jo['dst']:
+									print "how it come",jo['dst'],i
 								ip_s=socket.ntohl(struct.unpack("I",socket.inet_aton(s))[0])
 								ip_d=socket.ntohl(struct.unpack("I",socket.inet_aton(d))[0])
 								if ip_s>ip_d:
@@ -66,6 +68,9 @@ def get_link_node_from_dir(file):
 								all_link.add(str_ip)
 								all_node.add(s)
 								all_node.add(d)
+					if jo.has_key('dst'):
+						if jo['dst'] in all_node:
+							all_node.remove(jo['dst'])
 			fr.close()
 	print "all link",len(all_link),"all node",len(all_node),"all_packet",all_packet
 	print "all time",all_time

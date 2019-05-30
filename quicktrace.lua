@@ -209,14 +209,14 @@ function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE,begin_hop,end_hop)
 	return_trace['end']=trace['end']
 	return_trace['dst']=dst_ip
 	return_trace['rst']=8 --quicktrace type
-	if VERBOSE >= 1 then
+	if VERBOSE >= 2 then
 		io.write("Quicktrace: ",dst_ip , " hop ",1," - ",trace['end'] ,"\n")
 	end
 	for i =1,trace['end'] do
 		return_trace['hop'][i]=trace['hop'][i]['from']
 		return_trace['rtt'][i]=trace['hop'][i]['rtt']
 		return_trace['reply_ttl'][i]=trace['hop'][i]['reply_ttl']
-		if VERBOSE >= 1 then
+		if VERBOSE >= 2 then
 			io.write(i,' ',trace['hop'][i]['from']," ",trace['hop'][i]['reply_ttl']," ",trace['hop'][i]['rtt'],"ms\n")
 		end
 	end
