@@ -904,7 +904,10 @@ action=function()
 		if dst_ip then
 			local ip, err = ipOps.expand_ip(dst_ip)
 			if not err then
+				-- local test={}
+				-- test[1]="asfd"
 				last_hop_main(dst_ip,iface)
+				print(test[1])
 			else
 				print("error:illege ip",dst_ip)
 				return true

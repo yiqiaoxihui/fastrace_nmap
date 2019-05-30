@@ -14,7 +14,7 @@ last_N_hop={}
 
 local function fail(err) return ("\n  ERROR: %s"):format(err or "") end
 
-local function set_ttl_to_ping(iface,send_l3_sock,dst_ip,ttl,trace)
+local function last_n_hop_set_ttl_to_ping(iface,send_l3_sock,dst_ip,ttl,trace)
 	local echo_id=math.random(0x0, 0xffff)
 	while trace['echo_id'][echo_id] ~= nil do
 		echo_id=math.random(0x0, 0xffff)
@@ -205,7 +205,7 @@ function guest_network_distance(iface,send_l3_sock,ip,last_n_hop,trace,VERBOSE)
 	local left_ttl=-1
 	local first_ttl=64
 	local result_hop_start=1 --实际需要从result_hop_start开始探测
-	set_ttl_to_ping(iface,send_l3_sock,ip,first_ttl,trace)
+	last_n_hop_set_ttl_to_ping(iface,send_l3_sock,ip,first_ttl,trace)
 	stdnse.sleep(2)
 	--TODO
 
@@ -222,7 +222,7 @@ function guest_network_distance(iface,send_l3_sock,ip,last_n_hop,trace,VERBOSE)
 			set_ttl=ttl_from_target_to_source
 		end
 		send_number=send_number+1
-		set_ttl_to_ping(iface,send_l3_sock,ip,set_ttl,trace)
+		last_n_hop_set_ttl_to_ping(iface,send_l3_sock,ip,set_ttl,trace)
 		stdnse.sleep(1) 	--test,网络延迟，必须等待2秒
 
 		if trace['hop'][set_ttl]['rpk_type'] == 0 then --到达目标，减小ttl
@@ -232,7 +232,7 @@ function guest_network_distance(iface,send_l3_sock,ip,last_n_hop,trace,VERBOSE)
 			while true do
 				set_ttl=set_ttl-1
 				send_number=send_number+1
-				set_ttl_to_ping(iface,send_l3_sock,ip,set_ttl,trace)
+				last_n_hop_set_ttl_to_ping(iface,send_l3_sock,ip,set_ttl,trace)
 				stdnse.sleep(1)
 				if trace['hop'][set_ttl]['rpk_type'] == 0 then
 					if trace['end'] == -1 then
@@ -270,7 +270,7 @@ function guest_network_distance(iface,send_l3_sock,ip,last_n_hop,trace,VERBOSE)
 					result_hop_start=1
 				end
 				for i= result_hop_start , trace['end'] do
-					set_ttl_to_ping(iface,send_l3_sock,ip,i,trace)
+					last_n_hop_set_ttl_to_ping(iface,send_l3_sock,ip,i,trace)
 				end
 			else
 				if VERBOSE >= 1 then
@@ -284,7 +284,7 @@ function guest_network_distance(iface,send_l3_sock,ip,last_n_hop,trace,VERBOSE)
 			while true do
 				set_ttl=set_ttl+1
 				send_number=send_number+1
-				set_ttl_to_ping(iface,send_l3_sock,ip,set_ttl,trace)
+				last_n_hop_set_ttl_to_ping(iface,send_l3_sock,ip,set_ttl,trace)
 				stdnse.sleep(1)
 				if trace['hop'][set_ttl]['rpk_type'] == 0 then
 					if trace['end'] == -1 then
@@ -328,7 +328,7 @@ function guest_network_distance(iface,send_l3_sock,ip,last_n_hop,trace,VERBOSE)
 				else
 				end
 				for i = result_hop_start , trace['end'] do
-					set_ttl_to_ping(iface,send_l3_sock,ip,i,trace)
+					last_n_hop_set_ttl_to_ping(iface,send_l3_sock,ip,i,trace)
 				end
 			else
 				if VERBOSE >= 1 then
@@ -343,7 +343,7 @@ function guest_network_distance(iface,send_l3_sock,ip,last_n_hop,trace,VERBOSE)
 			while true do
 				set_ttl=set_ttl+1
 				send_number=send_number+1
-				set_ttl_to_ping(iface,send_l3_sock,ip,set_ttl,trace)
+				last_n_hop_set_ttl_to_ping(iface,send_l3_sock,ip,set_ttl,trace)
 				stdnse.sleep(1)
 				if trace['hop'][set_ttl]['rpk_type'] == 0 then
 					if trace['end'] == -1 then
@@ -387,7 +387,7 @@ function guest_network_distance(iface,send_l3_sock,ip,last_n_hop,trace,VERBOSE)
 
 				end
 				for i = result_hop_start , trace['end'] do
-					set_ttl_to_ping(iface,send_l3_sock,ip,i,trace)
+					last_n_hop_set_ttl_to_ping(iface,send_l3_sock,ip,i,trace)
 				end
 			else
 				if VERBOSE >= 1 then
