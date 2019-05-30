@@ -516,26 +516,7 @@ local function get_new_link_node_number(trace)
 	end
 	return new_link,new_node
 end
-local function last_n_hop_is_new(trace)
-	print("IMPROVE last_n_hop_is_new",IMPROVE,VERBOSE)
-	for i=(trace['end']-1)-2,trace['end']-1 do
-		if trace['hop'][i] ~= nil and trace['hop'][i] ~= 0 and global_node[trace['hop'][i]] == nil then
-			--IMPROVE:对新发现的最后几个新发现的节点也trace
-			if IMPROVE >=1 then
-				if VERBOSE >= 1 then 
-					-- io.write("IMPROVE last_n_hop_is_new, end: ",trace['end'],"hop ",i," :","\n")
-					io.write("IMPROVE last_n_hop_is_new, end: ",trace['end'],"hop ",i," :",trace['hop'][i],"\n")
-				end
-				local qtrace=quicktrace.quicktrace_main(trace['hop'][i],iface,VERBOSE)
-				get_new_link_node_number(qtrace)		--再次统计新节点和边
-				print_tr(qtrace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
-			end
-			ALL_NODE = ALL_NODE +1
-			global_node[trace['hop'][i]] = 1
-			-- return 1
-		end
-	end
-end
+
 local function normal_traceroute(dst_ip)
 	local trace={}
 	trace['dst']=dst_ip
@@ -574,6 +555,27 @@ local function compare_endrouter(trace1,trace2)
 	return 1
 	-- body
 end
+local function last_n_hop_is_new(trace)
+	print("IMPROVE last_n_hop_is_new",IMPROVE,VERBOSE)
+	for i=(trace['end']-1)-2,trace['end']-1 do
+		if trace['hop'][i] ~= nil and trace['hop'][i] ~= 0 and global_node[trace['hop'][i]] == nil then
+			--IMPROVE:对新发现的最后几个新发现的节点也trace
+			if IMPROVE >=1 then
+				if VERBOSE >= 1 then 
+					-- io.write("IMPROVE last_n_hop_is_new, end: ",trace['end'],"hop ",i," :","\n")
+					io.write("IMPROVE last_n_hop_is_new, end: ",trace['end'],"hop ",i," :",trace['hop'][i],"\n")
+				end
+				local qtrace=quicktrace.quicktrace_main(trace['hop'][i],iface,VERBOSE)
+				get_new_link_node_number(qtrace)		--再次统计新节点和边
+				print_tr(qtrace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
+			end
+			ALL_NODE = ALL_NODE +1
+			global_node[trace['hop'][i]] = 1
+			-- return 1
+		end
+	end
+end
+
 local function quicktrace_subnet(ip,prefix,hop)
 	local number_ip = ipOps.todword(ip)
 	if not number_ip then
@@ -588,11 +590,13 @@ local function quicktrace_subnet(ip,prefix,hop)
 		if VERBOSE >=1 then
 			print("IMPROVE quicktrace_subnet:",now_ip,1,hop+1)
 		end
-		local now_trace=quicktrace.quicktrace_main(now_ip,iface,VERBOSE,1,hop+5)
+		local now_trace=quicktrace.quicktrace_main(now_ip,iface,VERBOSE,2,hop+5)
+		ALL_SEND_PACKET = ALL_SEND_PACKET + hop - 1
 		print_tr(now_trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 		get_new_link_node_number(now_trace)
 	end
 end
+
 local function treetrace(cidr)
 	-- print("verbose:",VERBOSE)
 	--newsr=(fpx => 24,
