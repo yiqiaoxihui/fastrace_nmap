@@ -609,7 +609,7 @@ local function treetrace(cidr)
 	local oldsr = {}
 	newsr['trace']={}
 	oldsr['trace']={}
-	if cidr['pfx']>=MAX_PREFIX_LEN then
+	if cidr['pfx']>=31 then
 		if (cidr['pfx'] ~=32) and (HOSTADDR(cidr['net'],cidr['pfx'])==0) then
 			cidr['net']=IP_INC(NETADDR(cidr['net'],cidr['pfx']))
 		end
@@ -742,7 +742,7 @@ local function treetrace(cidr)
 			s:pop()
 			if IMPROVE >=1 then
 				if VERBOSE >= 1 then 
-					io.write("IMPROVE arrive MAX_PREFIX_LEN, pfx,MAX_PREFIX_LEN: ",pfx," ",MAX_PREFIX_LEN,"\n")
+					io.write("IMPROVE arrive MAX_PREFIX_LEN, pfx,MAX_PREFIX_LEN: ",oldsr['pfx']," ",MAX_PREFIX_LEN,"\n")
 				end
 				quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
 			end
