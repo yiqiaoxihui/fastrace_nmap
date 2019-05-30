@@ -502,14 +502,12 @@ local function get_new_link_node_number(trace)
 			end
 		end
 		if trace['hop'][i] ~= 0 and global_node[trace['hop'][i]] == nil then
-			
 			new_node = new_node + 1
 			ALL_NODE = ALL_NODE +1
 			global_node[trace['hop'][i]] = 1
 			if DEBUG == 1 or VERBOSE >=2 then
 				io.write('new node:',trace['hop'][i],"\n")
 			end
-
 			-- return 1
 		end
 	end
@@ -519,20 +517,18 @@ local function get_new_link_node_number(trace)
 	return new_link,new_node
 end
 local function last_n_hop_is_new(trace)
-	io.write("IMPROVE last_n_hop_is_new\n")
+	print("IMPROVE last_n_hop_is_new",IMPROVE,VERBOSE)
 	for i=(trace['end']-1)-2,trace['end']-1 do
 		if trace['hop'][i] ~= nil and trace['hop'][i] ~= 0 and global_node[trace['hop'][i]] == nil then
 			--IMPROVE:对新发现的最后几个新发现的节点也trace
-			if  i < (trace['end']-1) and (trace['end']-1)-i <= 2 then
-				if IMPROVE >=1 then
-					if VERBOSE >= 1 then 
-						-- io.write("IMPROVE last_n_hop_is_new, end: ",trace['end'],"hop ",i," :","\n")
-						io.write("IMPROVE last_n_hop_is_new, end: ",trace['end'],"hop ",i," :",trace['hop'][i],"\n")
-					end
-					local qtrace=quicktrace.quicktrace_main(trace['hop'][i],iface,VERBOSE)
-					get_new_link_node_number(qtrace)		--再次统计新节点和边
-					print_tr(qtrace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
+			if IMPROVE >=1 then
+				if VERBOSE >= 1 then 
+					-- io.write("IMPROVE last_n_hop_is_new, end: ",trace['end'],"hop ",i," :","\n")
+					io.write("IMPROVE last_n_hop_is_new, end: ",trace['end'],"hop ",i," :",trace['hop'][i],"\n")
 				end
+				local qtrace=quicktrace.quicktrace_main(trace['hop'][i],iface,VERBOSE)
+				get_new_link_node_number(qtrace)		--再次统计新节点和边
+				print_tr(qtrace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			end
 			ALL_NODE = ALL_NODE +1
 			global_node[trace['hop'][i]] = 1
@@ -586,15 +582,14 @@ local function quicktrace_subnet(ip,prefix,hop)
 	end
 	local begin_ip= bit.band(number_ip,(bit.lshift(0xffffffff,(32-prefix))))
 	local number=bit.rshift(0xffffffff,prefix)
-	if begin_ip+2 > begin_ip+number-1 then 
-		return
-	end
+
 	for i = begin_ip+2, begin_ip+number-1 do
 		local now_ip=fastrace_fromdword(i)
 		if VERBOSE >=1 then
-			print("IMPROVE quicktrace_subnet:",now_ip,hop-2,hop+2)
+			print("IMPROVE quicktrace_subnet:",now_ip,1,hop+1)
 		end
-		local now_trace=quicktrace.quicktrace_main(now_ip,iface,VERBOSE,hop-2,hop+2)
+		local now_trace=quicktrace.quicktrace_main(now_ip,iface,VERBOSE,1,hop+5)
+		print_tr(now_trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 		get_new_link_node_number(now_trace)
 	end
 end
@@ -702,9 +697,6 @@ local function treetrace(cidr)
 					io.write("IMPROVE compare_endrouter\n")
 				end
 				quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
-				-- local trace=quicktrace.quicktrace_main(MID_IP(oldsr['trace']['dst'],oldsr['pfx']),iface,VERBOSE)
-				-- get_new_link_node_number(trace)
-				-- print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			end
 			if VERBOSE >= 1 then
 				io.write("SAME SUBNET: new ip has same last hop with old ip,pop()",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx'])),"/",oldsr['pfx'],"\n")
@@ -725,6 +717,12 @@ local function treetrace(cidr)
 		--Min non-new netmark prefix lenth. 
 		if newsr['find_new'] == 0 and oldsr['find_new'] == 0 and oldsr['pfx'] >= MIN_NO_NEW_PREFIX then
 			s:pop()
+			if IMPROVE >=1 then
+				if VERBOSE >= 1 then 
+					io.write("IMPROVE No new links found, pfx,min_no_new_prefix: ",pfx," ",MIN_NO_NEW_PREFIX,"\n")
+				end
+				quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
+			end
 			if VERBOSE >= 1 then
 				print("SUBNET No new links found pop(), subnet:")
 				io.write("|--",oldsr['trace']['dst'],"/",oldsr['pfx'],"----the subnet\n")
@@ -740,8 +738,14 @@ local function treetrace(cidr)
 			newsr={}
 			goto TREETRACE_WHILE
 		end
-		if (oldsr['pfx'] + 1) >= MAX_PREFIX_LEN then
+		if (oldsr['pfx']) >= MAX_PREFIX_LEN then
 			s:pop()
+			if IMPROVE >=1 then
+				if VERBOSE >= 1 then 
+					io.write("IMPROVE arrive MAX_PREFIX_LEN, pfx,MAX_PREFIX_LEN: ",pfx," ",MAX_PREFIX_LEN,"\n")
+				end
+				quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
+			end
 			if VERBOSE >= 1 then
 				print("SUBNET arrive max prefix lenth,pop()\n")
 				io.write("|--",oldsr['trace']['dst'],"/",oldsr['pfx'],"----the subnet\n")
