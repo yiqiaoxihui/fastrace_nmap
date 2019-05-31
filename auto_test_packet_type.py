@@ -19,7 +19,7 @@ for key in packet_type_dic:
 	print packet_type_dic[key]
 	time.sleep(3)
 	fw=open("fi36.56.0.0_20.min24.verbose."+packet_type_dic[key],"w")
-	script_args="'max_timeout_per_hop=3,packet_type="+packet_type_dic[key]+",max_prefix_len=26,min_prefix_len=24,min_no_new_prefix=26,verbose=1,ip=36.56.0.0/20,output_type=file,output_filename=fi36.56.0.0_20.min24."+packet_type_dic[key]+"'"
+	script_args="'max_timeout_per_hop=3,packet_type="+packet_type_dic[key]+",ip_file="+ip+",output_type=file,output_filename=f36.56.0.0_20."+packet_type_dic[key]+"'"
 	cmd="nmap -e "+iface+" --script "+script_path+" --script-args="+script_args
 	print cmd
 	fw.write(cmd)
