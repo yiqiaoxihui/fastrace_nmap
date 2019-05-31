@@ -104,6 +104,29 @@ local function send_icmp_echo(pi)
 		print("!HOP:",pi['ttl'],"timeout")
 	end
 end
+local function icmp_tole_listener(signal,iface)
+	--print("\nbegin icmp time to live exceeded packet listener...")
+	local icmp_tole_rec_socket=nmap.new_socket()
+	local capture_rule="(icmp[0]=11) and (icmp[1]=0)"
+	icmp_tole_rec_socket:pcap_open(iface.device,128,false,capture_rule)
+	icmp_tole_rec_socket:set_timeout(10000)
+	local status,len,l2_icmp_t_l,l3_icmp_tol,time
+	local condvar=nmap.condvar(signal)
+	--local get_last_hop_count=0
+	while signal['status']==0 do
+		status,len,l2_icmp_t_l,l3_icmp_tol,time=icmp_tole_rec_socket:pcap_receive()
+		--signal['receive']=nil
+		if status then
+			print("icmp exceeded back!")
+		else
+			print("no icmp ttl exceeded packet back!")
+		end
+	end
+	
+	--print(ip,"get_last_hop_count:")
+	icmp_tole_rec_socket:close()
+	condvar("signal")
+end
 local function fail(err) return ("\n  ERROR: %s"):format(err or "") end
 local function hopping(dst_ip,ttl,try)
 	local pi={}		--探测信息
@@ -136,14 +159,26 @@ action=function(host)
 	if not ifname then
 		return fail("Failed to determine the network interface name")
 	end
+	print("action:",host.ip)
 	iface = nmap.get_interface_info(ifname)
 	send_l3_sock = nmap.new_dnet()
 	send_l3_sock:ip_open()
-	local dst_ip=stdnse.get_script_args("ip")
-	if not dst_ip then
-		return fail("no target in input")
-	end
-	--针对单个ip的正常traceroute
-	-- normal_traceroute(dst_ip)
-	hopping('47.90.99.168',6,3)
+
+	local icmp_tole_listener_signal={}
+	local icmp_tole_listener_condvar = nmap.condvar(icmp_tole_listener_signal)
+	icmp_tole_listener_signal['status']=0
+	icmp_tole_listener_signal['guest']=1
+	icmp_tole_listener_signal['last_hop']=0		--是否收到最后一跳
+	local icmp_tole_listener_handler=stdnse.new_thread(icmp_tole_listener,icmp_tole_listener_signal,iface)
+	stdnse.sleep(5)
+	repeat
+		if coroutine.status(icmp_tole_listener_handler)=="dead" then
+			icmp_tole_listener_handler=nil
+		else
+			icmp_tole_listener_signal['status']=1
+			icmp_tole_listener_condvar("wait")
+			--print("wait icmp test...")
+		end
+	until icmp_tole_listener_handler==nil
+	send_l3_sock:ip_close()
 end

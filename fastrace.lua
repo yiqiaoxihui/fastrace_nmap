@@ -588,7 +588,7 @@ local function quicktrace_subnet(ip,prefix,hop)
 	for i = begin_ip+2, begin_ip+number-1 do
 		local now_ip=fastrace_fromdword(i)
 		if VERBOSE >=1 then
-			print("IMPROVE quicktrace_subnet:",now_ip,1,hop+1)
+			print("IMPROVE quicktrace_subnet:",now_ip,prefix,hop)
 		end
 		local now_trace=quicktrace.quicktrace_main(now_ip,iface,VERBOSE,hop-2,hop)
 		ALL_SEND_PACKET = ALL_SEND_PACKET + 2

@@ -16,6 +16,7 @@ def get_node_link():
 	line=fr.readline()
 	link_set=set()
 	node_set=set()
+	dst_set=set()
 	if not line:
 		print "file in empty"
 		return
@@ -38,8 +39,22 @@ def get_node_link():
 			link_set.add(str_ip)
 			node_set.add(s)
 			node_set.add(d)
-	for l in link_set:
-		print l
+		if "Target" in line:
+			dst= line.split()[1]
+			dst_set.add(dst)
+	#delete dst from all node
+	for dst in dst_set:
+		if dst in node_set:
+			node_set.remove(dst)
+	fw=open(sys.argv[1]+".link",'w')
+	for item in link_set:
+		fw.write(item+"\n")
+	fw.close()
+
+	fw=open(sys.argv[1]+".node",'w')
+	for item in node_set:
+		fw.write(item+"\n")
+	fw.close()
 	print "all link",len(link_set),"all node",len(node_set)
 if __name__ == '__main__':
 	get_node_link()
