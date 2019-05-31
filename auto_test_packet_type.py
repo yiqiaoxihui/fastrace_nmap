@@ -28,7 +28,7 @@ for key in packet_type_dic:
 	while p.poll() is None:
 		line = p.stdout.readline()
 		fw.write(line.strip()+"\n")
-		print line.strip()+"\n"
+		print line.strip()
 	fw.close()
 	if p.returncode == 0:
 		print('Subprogram success')
