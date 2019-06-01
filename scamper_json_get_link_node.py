@@ -9,6 +9,7 @@ import re
 import struct
 import socket
 import json
+from IPy import IP
 def get_link_node_from_dir():
 	all_ip=0
 	host_distribution={}
@@ -63,9 +64,14 @@ def get_link_node_from_dir():
 								str_ip=d+" "+s
 							else:
 								str_ip=s+" "+d
-							link_set.add(str_ip)
-							node_set.add(s)
-							node_set.add(d)
+							if IP(s).iptype() == "PRIVATE" or IP(d).iptype() =="PRIVATE":
+								print "PRIVATE",s,d
+							else:
+								link_set.add(str_ip)
+							if IP(s).iptype() != "PRIVATE":
+								node_set.add(s)
+							if IP(d).iptype() != "PRIVATE":
+								node_set.add(d)
 				if jo.has_key('dst'):
 					dst_set.add(jo['dst'])
 		fr.close()

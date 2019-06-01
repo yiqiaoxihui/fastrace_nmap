@@ -872,13 +872,25 @@ action=function()
 			local ip, err = ipOps.expand_ip(dst_ip)
 			if not err then
 				local trace=quicktrace.quicktrace_main(dst_ip,iface,VERBOSE,1,30)
-				print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			else
 				return fail("error:illege ip")
+			end
+		elseif ip_file then 	--目标为文件
+			for line in io.lines(ip_file) do
+				dst_ip = line
+				local ip, err = ipOps.expand_ip(dst_ip)
+				if not err then
+					local trace=quicktrace.quicktrace_main(dst_ip,iface,VERBOSE,1,30)
+					get_new_link_node_number(trace)
+					print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
+				else
+					fail("error:illege ip")
+				end
 			end
 		else
 			return fail("error:no target input")
 		end
+		io.write("ALL_LINK: ",ALL_LINK," ALL_NODE: ",ALL_NODE,"\n")
 		return true
 	end 
 	--last_N_hop
