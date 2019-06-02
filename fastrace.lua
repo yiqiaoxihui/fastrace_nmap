@@ -226,7 +226,7 @@ local function forward_traceroute(trace,cmptrace)
 	local timeouth=0
 	local rtt
 	local reply_ttl
-	try=3					--更改发包类型,lua，table下标从0开始
+	try=2					--更改发包类型,lua，table下标从1开始
 	if cmptrace then
 		if trace['start']==0 then 				--treetrace->forward_reverse->this
 			trace['start']=cmptrace['end']		--从cmptrace end处开始,继续增加ttl探测
@@ -539,12 +539,11 @@ local function copy_tracehop(tracedst,tracesrc,ttls,ttle)
 	tracedst['start']=ttls
 end
 local function compare_endrouter(trace1,trace2)
-	if trace1['rst'] == TR_RESULT_DESIGN or trace2['rst'] == TR_RESULT_DESIGN then
+	--比较末跳时，必须都到达目标
+	if trace1['dst'] ~= trace1['hop'][trace1['end']] or trace2['dst'] ~= trace2['hop'][trace2['end']] then
 		return -1
 	end
-	if trace1['end'] <= 2 then
-		return 1 			--IMPROVE:少于2跳的，认为未到达目标，继续探测
-	end
+
 	if trace1['end'] == trace2['end'] then --IMPROVE:末跳都为零时，不算末跳相等
 		if trace1['hop'][trace1['end'] - 1] ~=0 and trace1['hop'][trace1['end'] - 1] == trace2['hop'][trace2['end'] - 1] then
 			return 0
@@ -591,6 +590,7 @@ local function quicktrace_subnet(ip,prefix,hop)
 			print("IMPROVE quicktrace_subnet:",now_ip,prefix,hop)
 		end
 		local now_trace=quicktrace.quicktrace_main(now_ip,iface,VERBOSE,hop-2,hop)
+		
 		ALL_SEND_PACKET = ALL_SEND_PACKET + 2
 		print_tr(now_trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 		get_new_link_node_number(now_trace)
@@ -695,13 +695,6 @@ local function treetrace(cidr)
 		--比较末跳路由，如果一致，则认为在同一子网
 		if compare_endrouter(newsr['trace'],oldsr['trace']) == 0 and oldsr['pfx'] >= MIN_PREFIX_LEN then
 			s:pop()
-			--IMPROVE:弹出时，对子网中间ip进行quicktrace
-			if IMPROVE >=1 then
-				if VERBOSE >= 1 then 
-					io.write("IMPROVE compare_endrouter\n")
-				end
-				quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
-			end
 			if VERBOSE >= 1 then
 				io.write("SAME SUBNET: new ip has same last hop with old ip,pop()",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx'])),"/",oldsr['pfx'],"\n")
 				io.write(oldsr['trace']['dst']," last hop: ",oldsr['trace']['hop'][oldsr['trace']['end'] - 1],"\n")
@@ -714,6 +707,13 @@ local function treetrace(cidr)
 			end
 			print_tr(oldsr['trace'],iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			print_tr(newsr['trace'],iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
+			--IMPROVE:弹出时，对子网中间ip进行quicktrace
+			if IMPROVE >=1 then
+				if VERBOSE >= 1 then 
+					io.write("IMPROVE compare_endrouter\n")
+				end
+				quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
+			end
 			oldsr={}
 			newsr={}
 			goto TREETRACE_WHILE
@@ -721,12 +721,6 @@ local function treetrace(cidr)
 		--Min non-new netmark prefix lenth. 
 		if newsr['find_new'] == 0 and oldsr['find_new'] == 0 and oldsr['pfx'] >= MIN_NO_NEW_PREFIX then
 			s:pop()
-			if IMPROVE >=1 then
-				if VERBOSE >= 1 then 
-					io.write("IMPROVE No new links found, pfx,min_no_new_prefix: ",oldsr['pfx']," ",MIN_NO_NEW_PREFIX,"\n")
-				end
-				quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
-			end
 			if VERBOSE >= 1 then
 				print("SUBNET No new links found pop(), subnet:")
 				io.write("|--",oldsr['trace']['dst'],"/",oldsr['pfx'],"----the subnet\n")
@@ -738,18 +732,18 @@ local function treetrace(cidr)
 			end
 			print_tr(oldsr['trace'],iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			print_tr(newsr['trace'],iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
+			if IMPROVE >=1 then
+				if VERBOSE >= 1 then 
+					io.write("IMPROVE No new links found, pfx,min_no_new_prefix: ",oldsr['pfx']," ",MIN_NO_NEW_PREFIX,"\n")
+				end
+				quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
+			end
 			oldsr={}
 			newsr={}
 			goto TREETRACE_WHILE
 		end
 		if (oldsr['pfx']) >= MAX_PREFIX_LEN then
 			s:pop()
-			if IMPROVE >=1 then
-				if VERBOSE >= 1 then 
-					io.write("IMPROVE arrive MAX_PREFIX_LEN, pfx,MAX_PREFIX_LEN: ",oldsr['pfx']," ",MAX_PREFIX_LEN,"\n")
-				end
-				quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
-			end
 			if VERBOSE >= 1 then
 				print("SUBNET arrive max prefix lenth,pop()\n")
 				io.write("|--",oldsr['trace']['dst'],"/",oldsr['pfx'],"----the subnet\n")
@@ -762,6 +756,12 @@ local function treetrace(cidr)
 			-- 	print("SUBNET arrive max prefix lenth,pop():",fastrace_fromdword(NETADDR(newsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
 			-- end
 			print_tr(newsr['trace'],iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
+			if IMPROVE >=1 then
+				if VERBOSE >= 1 then 
+					io.write("IMPROVE arrive MAX_PREFIX_LEN, pfx,MAX_PREFIX_LEN: ",oldsr['pfx']," ",MAX_PREFIX_LEN,"\n")
+				end
+				quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
+			end
 			oldsr={}
 			newsr={}
 			goto TREETRACE_WHILE
