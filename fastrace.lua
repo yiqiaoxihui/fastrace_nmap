@@ -128,7 +128,8 @@ local function reverse_traceroute(trace,cmptrace)
 	local from					--探测回复的源ip
 	local rtt
 	local reply_ttl
-	try =3
+	local timeout=0
+	try =2
 	trace['rst']=0
 	if trace['end'] > MAX_HOP then
 		trace['end'] = MAX_HOP
@@ -139,14 +140,30 @@ local function reverse_traceroute(trace,cmptrace)
 		if rpk_type ==0 then
 			return -1
 		end
-		if rpk_type == RPK_TIMEOUT then
-			---print("*HOP:",ttl,"timeout:",timeout)
-			trace['hop'][ttl]=0
-			trace['rtt'][ttl]=0
-			trace['reply_ttl'][ttl]=0
-			-- ttl=ttl-1
+		-- if rpk_type == RPK_TIMEOUT then
+		-- 	---print("*HOP:",ttl,"timeout:",timeout)
+		-- 	trace['hop'][ttl]=0
+		-- 	trace['rtt'][ttl]=0
+		-- 	trace['reply_ttl'][ttl]=0
+		-- 	goto reverse_hopping_begin
+		-- end
+		--超时未响应
+		if rpk_type==RPK_TIMEOUT then
+			timeout=timeout+1
+			try = GET_TRY(try)
+			if timeout >= MAX_TIMEOUT_PER_HOP then	--一跳上连续 MAX_TIMEOUT_PER_HOP 次超时
+				timeout=0
+				try=2 		--重置为2
+				trace['hop'][ttl]=0
+				trace['rtt'][ttl]=0
+				trace['reply_ttl'][ttl]=0
+			else
+				ttl=ttl+1 		--超时未到达上限，继续本跳探测
+			end	--end timeout==MAX_TIMEOUT_PER_HOP
+			-- ttl=ttl+1
 			goto reverse_hopping_begin
-		end
+		end		--end rpk_type==RPK_TIMEOUT 
+		timeout=0
 		trace['hop'][ttl] = from
 		trace['rtt'][ttl]=rtt
 		trace['reply_ttl'][ttl]=reply_ttl
@@ -290,7 +307,7 @@ local function forward_traceroute(trace,cmptrace)
 						print("TOH OK")
 					end
 					if VERBOSE >= 1 then
-						io.write("forward_traceroute TR_RESULT_TIMEOUT, ttl:",ttl,"no result ON continue ",timeout_hops,"hops, stop.\n")
+						io.write("forward_traceroute TR_RESULT_TIMEOUT, ttl:",ttl," no result ON continue ",timeout_hops,"hops, stop.\n")
 					end
 					---print("!TR_RESULT_TIMEOUT:",ttl,"timeout:",timeout,timeout_hops)
 					return 1
@@ -590,7 +607,7 @@ local function quicktrace_subnet(ip,prefix,hop)
 			print("IMPROVE quicktrace_subnet:",now_ip,prefix,hop)
 		end
 		local now_trace=quicktrace.quicktrace_main(now_ip,iface,VERBOSE,hop-2,hop)
-		
+
 		ALL_SEND_PACKET = ALL_SEND_PACKET + 2
 		print_tr(now_trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 		get_new_link_node_number(now_trace)
@@ -810,6 +827,7 @@ local function print_help()
 	..'INTERFACE is your interface name\n'
 	io.write(print_text)
 end
+
 action=function()
 	print("__________________")
 	-- print(MID_IP("1.1.1.1",29))
