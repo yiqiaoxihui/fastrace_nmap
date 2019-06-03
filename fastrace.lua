@@ -43,14 +43,17 @@ license = "Same as Nmap--See http://nmap.org/book/man-legal.html"
 categories = {"discovery", "safe"}
 -- The Head Section --
 
-prerule=function()
-	return true
-end
--- The Rule Section --
+-- prerule=function(host)
+-- 	return true
+-- end
 hostrule=function(host)
-	--print("hostrule()")
+	--print("hostrule:",host.ip)
 	return true
 end
+portrule = function(host)
+	return true
+end
+
 local function fail(err) return ("\n  ERROR: %s"):format(err or "") end
 
 local function GET_TRY(try)
@@ -828,13 +831,14 @@ local function print_help()
 	io.write(print_text)
 end
 
-action=function()
+action=function(host)
 	print("__________________")
 	-- print(MID_IP("1.1.1.1",29))
 	local ifname = nmap.get_interface() or host.interface
 	if not ifname then
 		return fail("Failed to determine the network interface name")
 	end
+	-- print(ifname)
 	local prober_type=stdnse.get_script_args("type")	--默认traceroute
 	if prober_type == "help" then 
 		print_help()
