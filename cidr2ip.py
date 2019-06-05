@@ -1,9 +1,8 @@
 from netaddr import IPNetwork
 import sys
 
-
+fw=open(sys.argv[2],'w')
 if sys.argv[3]=='1':
-	fw=open(sys.argv[2],'w')
 	ip=IPNetwork(sys.argv[1])
 	for i in ip:
 		print i

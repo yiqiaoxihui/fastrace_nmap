@@ -58,7 +58,7 @@ local function fail(err) return ("\n  ERROR: %s"):format(err or "") end
 
 local function GET_TRY(try)
 	if try >= NR_PROBING_ARRAY then
-		try = 1
+		try = 2
 	else
 		try=try+1
 	end
@@ -114,6 +114,12 @@ local function hopping(dst_ip,ttl,try)
 	if VERBOSE >= 1 then
 		print_ri(pi,rpk_type,from,rtt,reply_ttl)
 	end
+	if rpk_type ~= RPK_TIMEOUT then
+		if global_node[from] == nil then
+			ALL_NODE = ALL_NODE +1
+		end
+		EVERY_TATGET_SEND[ALL_NODE]=ALL_SEND_PACKET
+	end
 	return rpk_type,from,rtt,reply_ttl
 	-- body
 end
@@ -125,7 +131,7 @@ end
 -- */
 --//BNP backward on neighbor’s path
 local function reverse_traceroute(trace,cmptrace)
-	local ttl			
+	local ttl
 	local rpk_type				--返回包类型
 	local code					--ICMP错误代码
 	local from					--探测回复的源ip
@@ -156,7 +162,7 @@ local function reverse_traceroute(trace,cmptrace)
 			try = GET_TRY(try)
 			if timeout >= MAX_TIMEOUT_PER_HOP then	--一跳上连续 MAX_TIMEOUT_PER_HOP 次超时
 				timeout=0
-				try=2 		--重置为2
+				-- try=2 		--重置为2
 				trace['hop'][ttl]=0
 				trace['rtt'][ttl]=0
 				trace['reply_ttl'][ttl]=0
@@ -317,6 +323,7 @@ local function forward_traceroute(trace,cmptrace)
 					---print("!TR_RESULT_TIMEOUT:",ttl,"timeout:",timeout,timeout_hops)
 					return 1
 				end		--end timeout_hops==MAX_TIMEOUT_HOPS
+				-- try=2
 				ttl=ttl+1
 			end	--end timeout==MAX_TIMEOUT_PER_HOP
 			-- ttl=ttl+1
@@ -482,6 +489,24 @@ function forward_reverse(trace,fcmptrace,rcmptrace)
 	end
 	return 1
 end
+
+local function test_max_fpx(new_link,new_node,pfx)
+	for i=MAX_PREFIX_LEN, 31 do
+		if pfx <=i then
+			if TEST_PFX_INFO[i] ~= nil then
+				TEST_PFX_INFO[i]['link']=TEST_PFX_INFO[i]['link']+new_link
+				TEST_PFX_INFO[i]['node']=TEST_PFX_INFO[i]['node']+new_node
+			else
+				TEST_PFX_INFO[i]={}
+				TEST_PFX_INFO[i]['link']=0
+				TEST_PFX_INFO[i]['node']=0
+				TEST_PFX_INFO[i]['link']=TEST_PFX_INFO[i]['link']+new_link
+				TEST_PFX_INFO[i]['node']=TEST_PFX_INFO[i]['node']+new_node
+			end
+		end
+	end
+end
+
 local function print_all_node_link()
 	print("^^^^^^^^^^^^^^^global_node^^^^^^^^^^^^^^^^^^")
 	for k,v in pairs(global_node) do
@@ -492,7 +517,7 @@ local function print_all_node_link()
 		print(k)
 	end
 end
-local function get_new_link_node_number(trace)
+local function get_new_link_node_number(trace,pfx)
 	local new_link = 0
 	local new_node = 0
 	local link_key
@@ -525,8 +550,7 @@ local function get_new_link_node_number(trace)
 		end
 		if trace['hop'][i] ~= 0 and global_node[trace['hop'][i]] == nil then
 			new_node = new_node + 1
-			ALL_NODE = ALL_NODE +1
-			EVERY_TATGET_SEND[ALL_NODE]=ALL_SEND_PACKET
+			-- ALL_NODE = ALL_NODE +1
 			global_node[trace['hop'][i]] = 1
 			if DEBUG == 1 or VERBOSE >=2 then
 				io.write('new node:',trace['hop'][i],"\n")
@@ -534,6 +558,19 @@ local function get_new_link_node_number(trace)
 			-- return 1
 		end
 	end
+	--目标活的也算
+	if trace['hop'][trace['end']] ~= nil and trace['hop'][trace['end']] ~= 0 and global_node[trace['hop'][trace['end']]] == nil then
+		new_node = new_node + 1
+		-- ALL_NODE = ALL_NODE +1
+		-- EVERY_TATGET_SEND[ALL_NODE]=ALL_SEND_PACKET
+		global_node[trace['hop'][trace['end']]] = 1
+		if DEBUG == 1 or VERBOSE >=2 then
+			io.write('new node:',trace['hop'][i],"\n")
+		end
+		-- return 1
+	end
+	--测试不同前缀下的边，节点获取情况
+	test_max_fpx(new_node,new_link,pfx)
 	if DEBUG == 1 or VERBOSE>=1 then
 		print("***********find new link, node************",new_link,new_node)
 	end
@@ -548,7 +585,7 @@ local function normal_traceroute(dst_ip)
 		io.write("Fastrace ",dst_ip,"/32"," at ",os.date("%Y-%m-%d %H:%M:%S"),"\n")
 	end
 	forward_traceroute(trace,nil)
-	get_new_link_node_number(trace) 		--更新已获取边，节点
+	get_new_link_node_number(trace,32) 		--更新已获取边，节点
 	print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 end
 local function copy_tracehop(tracedst,tracesrc,ttls,ttle)
@@ -588,7 +625,7 @@ local function last_n_hop_is_new(trace)
 					io.write("IMPROVE last_n_hop_is_new, end: ",trace['end'],"hop ",i," :",trace['hop'][i],"\n")
 				end
 				local qtrace=quicktrace.quicktrace_main(trace['hop'][i],iface,VERBOSE)
-				get_new_link_node_number(qtrace)		--再次统计新节点和边
+				get_new_link_node_number(qtrace,1)		--再次统计新节点和边
 				print_tr(qtrace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			end
 			-- ALL_NODE = ALL_NODE +1
@@ -619,7 +656,7 @@ local function quicktrace_subnet(ip,prefix,hop)
 			QUICKTRACE_REDUNDANCE_COUNT=QUICKTRACE_REDUNDANCE_COUNT+hop-2
 		end
 		print_tr(now_trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
-		get_new_link_node_number(now_trace)
+		get_new_link_node_number(now_trace,prefix)
 	end
 end
 
@@ -650,6 +687,7 @@ local function treetrace(cidr)
 		return
 	end
 	newsr['pfx']=cidr['pfx']
+	--get first ip of subnet
 	newsr['trace']['dst']=IP_INC(NETADDR(cidr['net'],cidr['pfx']))
 	newsr['trace']['start'] = 1
 	-- print(newsr['trace']['dst'],newsr['trace']['start'])
@@ -660,7 +698,7 @@ local function treetrace(cidr)
 		newsr=nil
 		return
 	end
-	new_link , new_node = get_new_link_node_number(newsr['trace'])
+	new_link , new_node = get_new_link_node_number(newsr['trace'],newsr['pfx'])
 	if new_link > 0 or new_node >0 then
 		newsr['find_new'] = 1
 	else
@@ -705,7 +743,7 @@ local function treetrace(cidr)
 			s:clear()
 			return
 		end
-		new_link , new_node = get_new_link_node_number(newsr['trace'])
+		new_link , new_node = get_new_link_node_number(newsr['trace'],oldsr['pfx'])
 		if new_link > 0 or new_node >0 then
 			newsr['find_new'] = 1
 		else
@@ -748,7 +786,7 @@ local function treetrace(cidr)
 		--Min non-new netmark prefix lenth. 
 		if newsr['find_new'] == 0 and oldsr['find_new'] == 0 and oldsr['pfx'] >= MIN_NO_NEW_PREFIX then
 			s:pop()
-			NO_NEW_LINK_NODE=NO_NEW_LINK_NODE+1
+			NO_NEW_LINK_NODE_COUNT=NO_NEW_LINK_NODE_COUNT+1
 			if VERBOSE >= 1 then
 				print("SUBNET No new links found pop(), subnet:")
 				io.write("|--",oldsr['trace']['dst'],"/",oldsr['pfx'],"----the subnet\n")
@@ -840,6 +878,7 @@ local function print_help()
 end
 
 action=function(host)
+	local start_time=os.time()
 	print("__________________")
 	-- print(MID_IP("1.1.1.1",29))
 	local ifname = nmap.get_interface() or host.interface
@@ -911,7 +950,7 @@ action=function(host)
 				local ip, err = ipOps.expand_ip(dst_ip)
 				if not err then
 					local trace=quicktrace.quicktrace_main(dst_ip,iface,VERBOSE,1,30)
-					get_new_link_node_number(trace)
+					get_new_link_node_number(trace,32)
 					print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 				else
 					fail("error:illege ip")
@@ -1055,9 +1094,6 @@ action=function(host)
 		else
 			print("error cidr format:",dst_ip)
 		end
-	    if OUTPUT_TYPE == "file" then
-	    	OUTPUT_FILE_HANDLER:write("ALL_LINK: ",ALL_LINK," ALL_NODE: ",ALL_NODE,"\n")
-		end
 		-- print_all_node_link()
 		io.write("ALL_LINK: ",ALL_LINK," ALL_NODE: ",ALL_NODE,"\n")
 	elseif ip_file then 	--目标为文件
@@ -1082,19 +1118,19 @@ action=function(host)
 			end
 		end--end for
 		-- print_all_node_link()
-	    if OUTPUT_TYPE == "file" then
-	    	for k,v in pairs(EVERY_TATGET_SEND) do
-	    		print("EVERY_TATGET_SEND: ",k,v)
-	    		OUTPUT_FILE_HANDLER:write("EVERY_TATGET_SEND: ",k," ",v,"\n")
-	    	end
-	    	OUTPUT_FILE_HANDLER:write("ALL_LINK: ",ALL_LINK,"\n")
-	    	OUTPUT_FILE_HANDLER:write("ALL_NODE: ",ALL_NODE,"\n")
-		end
-		print("ALL_LINK: ",ALL_LINK)
-		print("ALL_NODE: ",ALL_NODE)
 	else
 	end
+	local end_time=os.time()
+	local RUNTIME=(end_time-start_time)/60
     if OUTPUT_TYPE == "file" then
+    	for k,v in pairs(TEST_PFX_INFO) do
+    		OUTPUT_FILE_HANDLER:write("TEST_PFX_INFO: ",k," ",v['link']," ",v['node'],"\n")
+    	end
+    	for k,v in pairs(EVERY_TATGET_SEND) do
+    		OUTPUT_FILE_HANDLER:write("EVERY_TATGET_SEND: ",k," ",v,"\n")
+    	end
+    	OUTPUT_FILE_HANDLER:write("ALL_LINK: ",ALL_LINK,"\n")
+    	OUTPUT_FILE_HANDLER:write("ALL_NODE: ",ALL_NODE,"\n")
 		OUTPUT_FILE_HANDLER:write("MAX_TIMEOUT_PER_HOP: ",MAX_TIMEOUT_PER_HOP,"\n")
 		OUTPUT_FILE_HANDLER:write("MAX_TIMEOUT_HOPS: ",MAX_TIMEOUT_HOPS,"\n")
 		OUTPUT_FILE_HANDLER:write("MIN_PREFIX_LEN: ",MIN_PREFIX_LEN,"\n")
@@ -1108,8 +1144,21 @@ action=function(host)
 		OUTPUT_FILE_HANDLER:write("BNP_REDUNDANCE_COUNT: ",BNP_REDUNDANCE_COUNT,"\n")
 		OUTPUT_FILE_HANDLER:write("QUICKTRACE_REDUNDANCE_COUNT: ",QUICKTRACE_REDUNDANCE_COUNT,"\n")
 		OUTPUT_FILE_HANDLER:write("SAME_SUBNET_COUNT: ",SAME_SUBNET_COUNT,"\n")
-		OUTPUT_FILE_HANDLER:write("NO_NEW_LINK_NODE: ",NO_NEW_LINK_NODE,"\n")
+		OUTPUT_FILE_HANDLER:write("NO_NEW_LINK_NODE_COUNT: ",NO_NEW_LINK_NODE_COUNT,"\n")
+
+		OUTPUT_FILE_HANDLER:write("BNP_COUNT: ",BNP_COUNT,"\n")
+		OUTPUT_FILE_HANDLER:write("NNS_COUNT: ",NNS_COUNT,"\n")
+		OUTPUT_FILE_HANDLER:write("RUNTIME: ",RUNTIME,"\n")
 	end
+
+	for k,v in pairs(TEST_PFX_INFO) do
+		io.write("TEST_PFX_INFO: ",k," ",v['link']," ",v['node'],"\n")
+	end
+	for k,v in pairs(EVERY_TATGET_SEND) do
+		print("EVERY_TATGET_SEND: ",k,v)
+	end
+	print("ALL_LINK: ",ALL_LINK)
+	print("ALL_NODE: ",ALL_NODE)
 	print("ALL_SEND_PACKET: ",ALL_SEND_PACKET)
 	print("QUICKTRACE_SENT: ",QUICKTRACE_SENT)
 	print("HOPPING_SEND: ",ALL_SEND_PACKET-QUICKTRACE_SENT)
@@ -1117,7 +1166,10 @@ action=function(host)
 	print("BNP_REDUNDANCE_COUNT: ",BNP_REDUNDANCE_COUNT)
 	print("QUICKTRACE_REDUNDANCE_COUNT: ",QUICKTRACE_REDUNDANCE_COUNT)
 	print("SAME_SUBNET_COUNT: ",SAME_SUBNET_COUNT)
-	print("NO_NEW_LINK_NODE: ",NO_NEW_LINK_NODE)
+	print("NO_NEW_LINK_NODE_COUNT: ",NO_NEW_LINK_NODE_COUNT)
+	print("BNP_COUNT: ",BNP_COUNT)
+	print("NNS_COUNT: ",NNS_COUNT)
+	print("RUNTIME: ",RUNTIME)
 	-- local s = Stack:new()
 	-- s:push(1)
 	-- s:push(2)
