@@ -221,6 +221,7 @@ local function reverse_traceroute(trace,cmptrace)
 			if VERBOSE >= 1 then
 				io.write("reverse_traceroute BNP, ","current ip has same hop with cmptrace on ttl = ",ttl," return\n")
 			end
+			BNP_COUNT=BNP_COUNT+1
 			return 1
 		end
 		::reverse_hopping_begin::
@@ -291,6 +292,7 @@ local function forward_traceroute(trace,cmptrace)
 					if VERBOSE >= 1 then
 						io.write("forward_traceroute NNS by cmptrace, cmptrace stop on this ttl timeout, and this ip ",trace['dst']," timeout as well as cmptrace on this ttl= ",ttl,", NNS stop.\n")
 					end
+					NNS_COUNT=NNS_COUNT+1
 					return 1
 				end
 			end
@@ -524,6 +526,7 @@ local function get_new_link_node_number(trace)
 		if trace['hop'][i] ~= 0 and global_node[trace['hop'][i]] == nil then
 			new_node = new_node + 1
 			ALL_NODE = ALL_NODE +1
+			EVERY_TATGET_SEND[ALL_NODE]=ALL_SEND_PACKET
 			global_node[trace['hop'][i]] = 1
 			if DEBUG == 1 or VERBOSE >=2 then
 				io.write('new node:',trace['hop'][i],"\n")
@@ -554,7 +557,7 @@ local function copy_tracehop(tracedst,tracesrc,ttls,ttle)
 		tracedst['hop'][i] = tracesrc['hop'][i]
 		tracedst['rtt'][i]=tracesrc['rtt'][i]
 		tracedst['reply_ttl'][i]=tracesrc['reply_ttl'][i]
-		REDUNDANCE_COUNT=REDUNDANCE_COUNT+1
+		BNP_REDUNDANCE_COUNT=BNP_REDUNDANCE_COUNT+1
 	end
 	tracedst['start']=ttls
 end
@@ -604,14 +607,17 @@ local function quicktrace_subnet(ip,prefix,hop)
 	local begin_ip= bit.band(number_ip,(bit.lshift(0xffffffff,(32-prefix))))
 	local number=bit.rshift(0xffffffff,prefix)
 
-	for i = begin_ip+2, begin_ip+number-1 do
+	for i = begin_ip+2, begin_ip+number-2 do
 		local now_ip=fastrace_fromdword(i)
 		if VERBOSE >=1 then
-			print("IMPROVE quicktrace_subnet:",now_ip,prefix,hop)
+			print("IMPROVE quicktrace_subnet:",number,now_ip,prefix,hop)
 		end
-		local now_trace=quicktrace.quicktrace_main(now_ip,iface,VERBOSE,hop-2,hop)
-
-		ALL_SEND_PACKET = ALL_SEND_PACKET + 2
+		local now_trace=quicktrace.quicktrace_main(now_ip,iface,VERBOSE,hop-2,hop+2)
+		ALL_SEND_PACKET = ALL_SEND_PACKET + 3
+		QUICKTRACE_SENT=QUICKTRACE_SENT+3
+		if hop-2 >0 then
+			QUICKTRACE_REDUNDANCE_COUNT=QUICKTRACE_REDUNDANCE_COUNT+hop-2
+		end
 		print_tr(now_trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 		get_new_link_node_number(now_trace)
 	end
@@ -715,6 +721,7 @@ local function treetrace(cidr)
 		--比较末跳路由，如果一致，则认为在同一子网
 		if compare_endrouter(newsr['trace'],oldsr['trace']) == 0 and oldsr['pfx'] >= MIN_PREFIX_LEN then
 			s:pop()
+			SAME_SUBNET_COUNT=SAME_SUBNET_COUNT+1
 			if VERBOSE >= 1 then
 				io.write("SAME SUBNET: new ip has same last hop with old ip,pop()",fastrace_fromdword(NETADDR(oldsr['trace']['dst'],oldsr['pfx'])),"/",oldsr['pfx'],"\n")
 				io.write(oldsr['trace']['dst']," last hop: ",oldsr['trace']['hop'][oldsr['trace']['end'] - 1],"\n")
@@ -741,6 +748,7 @@ local function treetrace(cidr)
 		--Min non-new netmark prefix lenth. 
 		if newsr['find_new'] == 0 and oldsr['find_new'] == 0 and oldsr['pfx'] >= MIN_NO_NEW_PREFIX then
 			s:pop()
+			NO_NEW_LINK_NODE=NO_NEW_LINK_NODE+1
 			if VERBOSE >= 1 then
 				print("SUBNET No new links found pop(), subnet:")
 				io.write("|--",oldsr['trace']['dst'],"/",oldsr['pfx'],"----the subnet\n")
@@ -1047,7 +1055,10 @@ action=function(host)
 		else
 			print("error cidr format:",dst_ip)
 		end
-		print_all_node_link()
+	    if OUTPUT_TYPE == "file" then
+	    	OUTPUT_FILE_HANDLER:write("ALL_LINK: ",ALL_LINK," ALL_NODE: ",ALL_NODE,"\n")
+		end
+		-- print_all_node_link()
 		io.write("ALL_LINK: ",ALL_LINK," ALL_NODE: ",ALL_NODE,"\n")
 	elseif ip_file then 	--目标为文件
 		for line in io.lines(ip_file) do
@@ -1070,12 +1081,43 @@ action=function(host)
 				print("error:illege ip",cidr['net'])
 			end
 		end--end for
-		print_all_node_link()
-		io.write("ALL_LINK: ",ALL_LINK," ALL_NODE: ",ALL_NODE,"\n")
+		-- print_all_node_link()
+	    if OUTPUT_TYPE == "file" then
+	    	for k,v in pairs(EVERY_TATGET_SEND) do
+	    		print("EVERY_TATGET_SEND: ",k,v)
+	    		OUTPUT_FILE_HANDLER:write("EVERY_TATGET_SEND: ",k," ",v,"\n")
+	    	end
+	    	OUTPUT_FILE_HANDLER:write("ALL_LINK: ",ALL_LINK,"\n")
+	    	OUTPUT_FILE_HANDLER:write("ALL_NODE: ",ALL_NODE,"\n")
+		end
+		print("ALL_LINK: ",ALL_LINK)
+		print("ALL_NODE: ",ALL_NODE)
 	else
 	end
-	print("ALL_SEND_PACKET:",ALL_SEND_PACKET)
-	print("REDUNDANCE_COUNT:",REDUNDANCE_COUNT)
+    if OUTPUT_TYPE == "file" then
+		OUTPUT_FILE_HANDLER:write("MAX_TIMEOUT_PER_HOP: ",MAX_TIMEOUT_PER_HOP,"\n")
+		OUTPUT_FILE_HANDLER:write("MAX_TIMEOUT_HOPS: ",MAX_TIMEOUT_HOPS,"\n")
+		OUTPUT_FILE_HANDLER:write("MIN_PREFIX_LEN: ",MIN_PREFIX_LEN,"\n")
+		OUTPUT_FILE_HANDLER:write("MAX_PREFIX_LEN: ",MAX_PREFIX_LEN,"\n")
+		OUTPUT_FILE_HANDLER:write("MIN_NO_NEW_PREFIX: ",MIN_NO_NEW_PREFIX,"\n")
+
+		OUTPUT_FILE_HANDLER:write("ALL_SEND_PACKET: ",ALL_SEND_PACKET,"\n")
+		OUTPUT_FILE_HANDLER:write("QUICKTRACE_SENT: ",QUICKTRACE_SENT,"\n")
+		OUTPUT_FILE_HANDLER:write("HOPPING_SEND: ",ALL_SEND_PACKET-QUICKTRACE_SENT,"\n")
+
+		OUTPUT_FILE_HANDLER:write("BNP_REDUNDANCE_COUNT: ",BNP_REDUNDANCE_COUNT,"\n")
+		OUTPUT_FILE_HANDLER:write("QUICKTRACE_REDUNDANCE_COUNT: ",QUICKTRACE_REDUNDANCE_COUNT,"\n")
+		OUTPUT_FILE_HANDLER:write("SAME_SUBNET_COUNT: ",SAME_SUBNET_COUNT,"\n")
+		OUTPUT_FILE_HANDLER:write("NO_NEW_LINK_NODE: ",NO_NEW_LINK_NODE,"\n")
+	end
+	print("ALL_SEND_PACKET: ",ALL_SEND_PACKET)
+	print("QUICKTRACE_SENT: ",QUICKTRACE_SENT)
+	print("HOPPING_SEND: ",ALL_SEND_PACKET-QUICKTRACE_SENT)
+
+	print("BNP_REDUNDANCE_COUNT: ",BNP_REDUNDANCE_COUNT)
+	print("QUICKTRACE_REDUNDANCE_COUNT: ",QUICKTRACE_REDUNDANCE_COUNT)
+	print("SAME_SUBNET_COUNT: ",SAME_SUBNET_COUNT)
+	print("NO_NEW_LINK_NODE: ",NO_NEW_LINK_NODE)
 	-- local s = Stack:new()
 	-- s:push(1)
 	-- s:push(2)

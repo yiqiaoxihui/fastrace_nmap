@@ -123,7 +123,7 @@ function set_ttl_to_ping(trace,ttl,echo_id,send_l3_sock,device)
 	local ip=packet.Packet:new()
 	ip.ip_bin_dst = trace['ip_bin_dst']
 	ip.ip_bin_src = trace['ip_bin_src']
-	ip.echo_data = "abc"
+	ip.echo_data = "abcdefghigklmnopqrstuwvxyz"
 	-- ip.echo_seq = echo_seq
 	ip.echo_id=echo_id
 	ip.ip_offset=0
@@ -135,9 +135,9 @@ function set_ttl_to_ping(trace,ttl,echo_id,send_l3_sock,device)
 	start_time=stdnse.clock_ms()
 	trace['rtt'][ttl]={}
 	trace['rtt'][ttl]['start_time']=start_time
-	for k,v in pairs(ip) do
-		--print("ip:",k,v)
-	end
+	-- for k,v in pairs(ip) do
+	-- 	--print("ip:",k,v)
+	-- end
 	send_l3_sock:ip_send(ip.buf)
 end
 
@@ -182,13 +182,13 @@ function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE,begin_hop,end_hop)
 		trace['hop'][i]['rtt']=0
 		trace['hop'][i]['reply_ttl']=0
 		if i>=begin_hop  and i <=end_hop then			--只对指定范围进行，探测
-			if VERBOSE >= 1 then
+			if VERBOSE >= 2 then
 				io.write("--send ping packet ",i," ",echo_id,"\n")
 			end
 			set_ttl_to_ping(trace,i,echo_id,send_l3_sock,iface.device)
 		end
 	end
-	stdnse.sleep(1)
+	stdnse.sleep(2)
 	repeat
 		if coroutine.status(icmp_reply_listener_handler) =="dead" then
 			icmp_reply_listener_handler=nil
@@ -218,6 +218,23 @@ function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE,begin_hop,end_hop)
 		return_trace['reply_ttl'][i]=trace['hop'][i]['reply_ttl']
 		if VERBOSE >= 2 then
 			io.write(i,' ',trace['hop'][i]['from']," ",trace['hop'][i]['reply_ttl']," ",trace['hop'][i]['rtt'],"ms\n")
+		end
+	end
+	local i = trace['end']
+	if return_trace['hop'][i] ==0 then 
+		while i>1 and return_trace['hop'][i] ==0 do 			--table begin from 1,找到第一个超时的，即为end
+			i=i-1
+		end
+		return_trace['end'] = i + 1
+	end
+	i=1
+	if return_trace['hop'][i] ==0 then 
+		while i < return_trace['end'] and return_trace['hop'][i] ==0 do 			--table begin from 1,找到第一个超时的，即为end
+			i=i + 1
+		end
+		return_trace['start'] = i - 1
+		if return_trace['start'] < 1 then
+			return_trace['start']=1
 		end
 	end
 	send_l3_sock:ip_close()
