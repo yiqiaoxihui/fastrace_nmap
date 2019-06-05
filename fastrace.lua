@@ -111,14 +111,21 @@ local function hopping(dst_ip,ttl,try)
 		rpk_type, from,rtt,reply_ttl=prober.send_udp_big_port(pi,send_l3_sock,iface.device)
 		-- print("probe result:rpk_type,from:",rpk_type,from)
 	end
+
 	if VERBOSE >= 1 then
 		print_ri(pi,rpk_type,from,rtt,reply_ttl)
 	end
 	if rpk_type ~= RPK_TIMEOUT then
 		if global_node[from] == nil then
 			ALL_NODE = ALL_NODE +1
+			--若为中间路由器
+			if from ~= dst_ip then
+				MID_ROUTER_COUNT=MID_ROUTER_COUNT+1
+			end
 		end
 		EVERY_TATGET_SEND[ALL_NODE]=ALL_SEND_PACKET
+
+		MID_ROUTER_SEND[MID_ROUTER_COUNT]=ALL_SEND_PACKET
 	end
 	return rpk_type,from,rtt,reply_ttl
 	-- body
@@ -542,6 +549,9 @@ local function get_new_link_node_number(trace,pfx)
 				ALL_LINK=ALL_LINK+1
 				new_link= new_link + 1
 				global_link_hashmap[link_key] = 1
+				if i == (trace['end']-1) then
+					TO_TARGET_LINK=TO_TARGET_LINK+1
+				end
 				if DEBUG == 1 or VERBOSE>=1 then
 					io.write('new link,hop: ',i," ",trace['hop'][i],' ~~~~~~~~~~~~~~~~ ',trace['hop'][i+1],"\n")
 				end
@@ -569,10 +579,14 @@ local function get_new_link_node_number(trace,pfx)
 		end
 		-- return 1
 	end
+	--统计可达目标
+	if trace['hop'][trace['end']] ~= nil and trace['hop'][trace['end']] ~= 0 and trace['hop'][trace['end']] == trace['dst'] then
+		TARGET_ARRIVE=TARGET_ARRIVE+1
+	end
 	--测试不同前缀下的边，节点获取情况
 	test_max_fpx(new_node,new_link,pfx)
 	if DEBUG == 1 or VERBOSE>=1 then
-		print("***********find new link, node************",new_link,new_node)
+		print("*****packet,all link, node,mid-router, find new link, node******",ALL_SEND_PACKET,ALL_LINK,ALL_NODE,MID_ROUTER_COUNT,new_link,new_node)
 	end
 	return new_link,new_node
 end
@@ -696,8 +710,10 @@ local function treetrace(cidr)
 	end
 	if forward_traceroute(newsr['trace'],nil)==-1 then
 		newsr=nil
+		io.write("Fastrace STOP IN treetrace->forward_traceroute \n")
 		return
 	end
+	ALL_TARGET=ALL_TARGET+1
 	new_link , new_node = get_new_link_node_number(newsr['trace'],newsr['pfx'])
 	if new_link > 0 or new_node >0 then
 		newsr['find_new'] = 1
@@ -707,6 +723,7 @@ local function treetrace(cidr)
 	local s = Stack:new()
 	s:push(newsr)
 	while s:is_empty() == false do
+		ALL_TARGET=ALL_TARGET+1
 		oldsr = s:top()
 		-- print('addr:',oldsr,newsr)
 		newsr = {} 		--赋为空后，地址改变，不再和oldsr指向同一地址
@@ -732,7 +749,7 @@ local function treetrace(cidr)
 				io.write("|--",newsr['trace']['dst'],"/",oldsr['pfx'],"-------get first ip of subnet\n")
 				io.write("|--",oldsr['trace']['dst'],"/",oldsr['pfx'],"-------the last  ip on stack top\n")
 			end
-		end 
+		end
 		newsr['trace']['start'] = 0			--/* `start' waiting to be set by `oldsr'. */
 		if VERBOSE >= 1 then 
 			-- io.write('get oldsr on top stack:',oldsr['trace']['dst'],"/",oldsr['pfx'],"\n")
@@ -741,6 +758,7 @@ local function treetrace(cidr)
 		end
 		if forward_reverse(newsr['trace'],oldsr['trace'],oldsr['trace']) == -1 then
 			s:clear()
+			io.write("Fastrace STOP IN treetrace->forward_reverse \n")
 			return
 		end
 		new_link , new_node = get_new_link_node_number(newsr['trace'],oldsr['pfx'])
@@ -1126,11 +1144,19 @@ action=function(host)
     	for k,v in pairs(TEST_PFX_INFO) do
     		OUTPUT_FILE_HANDLER:write("TEST_PFX_INFO: ",k," ",v['link']," ",v['node'],"\n")
     	end
+		for k,v in pairs(MID_ROUTER_SEND) do
+			OUTPUT_FILE_HANDLER:write("MID_ROUTER_SEND: ",k," ",v,"\n")
+		end
     	for k,v in pairs(EVERY_TATGET_SEND) do
     		OUTPUT_FILE_HANDLER:write("EVERY_TATGET_SEND: ",k," ",v,"\n")
     	end
-    	OUTPUT_FILE_HANDLER:write("ALL_LINK: ",ALL_LINK,"\n")
+		OUTPUT_FILE_HANDLER:write("ALL_TARGET: ",ALL_TARGET,"\n")
     	OUTPUT_FILE_HANDLER:write("ALL_NODE: ",ALL_NODE,"\n")
+		OUTPUT_FILE_HANDLER:write("TARGET_ARRIVE: ",TARGET_ARRIVE,"\n")
+
+    	OUTPUT_FILE_HANDLER:write("ALL_LINK: ",ALL_LINK,"\n")
+		OUTPUT_FILE_HANDLER:write("TO_TARGET_LINK: ",TO_TARGET_LINK,"\n")
+
 		OUTPUT_FILE_HANDLER:write("MAX_TIMEOUT_PER_HOP: ",MAX_TIMEOUT_PER_HOP,"\n")
 		OUTPUT_FILE_HANDLER:write("MAX_TIMEOUT_HOPS: ",MAX_TIMEOUT_HOPS,"\n")
 		OUTPUT_FILE_HANDLER:write("MIN_PREFIX_LEN: ",MIN_PREFIX_LEN,"\n")
@@ -1154,11 +1180,18 @@ action=function(host)
 	for k,v in pairs(TEST_PFX_INFO) do
 		io.write("TEST_PFX_INFO: ",k," ",v['link']," ",v['node'],"\n")
 	end
+	for k,v in pairs(MID_ROUTER_SEND) do
+		print("MID_ROUTER_SEND: ",k,v)
+	end
 	for k,v in pairs(EVERY_TATGET_SEND) do
 		print("EVERY_TATGET_SEND: ",k,v)
 	end
-	print("ALL_LINK: ",ALL_LINK)
+	print("ALL_TARGET: ",ALL_TARGET)
 	print("ALL_NODE: ",ALL_NODE)
+	print("TARGET_ARRIVE: ",TARGET_ARRIVE)
+	print("ALL_LINK: ",ALL_LINK)
+	print("TO_TARGET_LINK: ",TO_TARGET_LINK)
+
 	print("ALL_SEND_PACKET: ",ALL_SEND_PACKET)
 	print("QUICKTRACE_SENT: ",QUICKTRACE_SENT)
 	print("HOPPING_SEND: ",ALL_SEND_PACKET-QUICKTRACE_SENT)

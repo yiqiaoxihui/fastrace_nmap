@@ -380,4 +380,15 @@ QUICKTRACE_SENT			=0
 
 EVERY_TATGET_SEND	={}	--发现新节点的发包数量
 
+
 TEST_PFX_INFO		={}	--测试不同最大停止前缀下的发包量、节点、边获取情况
+
+TARGET_ARRIVE		=0	--目标可达数目
+ALL_TARGET			=0	--treetrace探测的目标总数
+
+TO_TARGET_LINK		=0	--与目标连接的边
+
+MID_ROUTER_COUNT	=0  --中间路由器回复
+
+MID_ROUTER_SEND		={}	--发现新中间路由器的发包数量
+
