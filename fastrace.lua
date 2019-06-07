@@ -601,6 +601,8 @@ end
 local function normal_traceroute(dst_ip)
 	local trace={}
 	trace['dst']=dst_ip
+	trace['BNP']=0 --for print_tr error ,if not this
+	trace['cmp_ip']=0 --for print_tr error ,if not this
 	trace['start']=1
 	if VERBOSE >= 1 then
 		io.write("Fastrace ",dst_ip,"/32"," at ",os.date("%Y-%m-%d %H:%M:%S"),"\n")
@@ -979,6 +981,8 @@ action=function(host)
 				local ip, err = ipOps.expand_ip(dst_ip)
 				if not err then
 					local trace=quicktrace.quicktrace_main(dst_ip,iface,VERBOSE,1,30)
+					trace['BNP']=0 --for print_tr in base.lua 
+					trace['cmp_ip']=0
 					get_new_link_node_number(trace,32)
 					print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 				else
