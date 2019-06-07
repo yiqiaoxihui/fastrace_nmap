@@ -10,6 +10,7 @@ local string = require "string"
 local table = require "table"
 local dns = require "dns"
 local bit = require "bit"
+local json = require "json"
 -- local datetime = require "datetime"
 -- local io = require "io"
 require('base')
@@ -169,7 +170,7 @@ local function reverse_traceroute(trace,cmptrace)
 			try = GET_TRY(try)
 			if timeout >= MAX_TIMEOUT_PER_HOP then	--一跳上连续 MAX_TIMEOUT_PER_HOP 次超时
 				timeout=0
-				-- try=2 		--重置为2
+				try=2 		--重置为2
 				trace['hop'][ttl]=0
 				trace['rtt'][ttl]=0
 				trace['reply_ttl'][ttl]=0
@@ -312,6 +313,7 @@ local function forward_traceroute(trace,cmptrace)
 
 			if timeout==MAX_TIMEOUT_PER_HOP then	--一跳上连续 MAX_TIMEOUT_PER_HOP 次超时
 				timeout=0
+				try=2
 				timeout_hops=timeout_hops+1
 				trace['hop'][ttl]=0
 				trace['rtt'][ttl]=0
@@ -498,7 +500,7 @@ function forward_reverse(trace,fcmptrace,rcmptrace)
 end
 
 local function test_max_fpx(new_link,new_node,pfx)
-	for i=MAX_PREFIX_LEN, 31 do
+	for i=1, 31 do
 		if pfx <=i then
 			if TEST_PFX_INFO[i] ~= nil then
 				TEST_PFX_INFO[i]['link']=TEST_PFX_INFO[i]['link']+new_link
@@ -896,6 +898,7 @@ local function print_help()
 end
 
 action=function(host)
+
 	local start_time=os.time()
 	print("__________________")
 	-- print(MID_IP("1.1.1.1",29))

@@ -194,7 +194,7 @@ function quicktrace.quicktrace_main(dst_ip,iface,VERBOSE,begin_hop,end_hop)
 			icmp_reply_listener_handler=nil
 		else
 			if VERBOSE >= 1 then
-				print("wait icmp port unreachable listener end...")
+				print("wait icmp listener end...")
 			end
 			icmp_reply_listener_signal['status'] = 1
 			icmp_reply_listener_condvar("wait")

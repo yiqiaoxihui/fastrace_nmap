@@ -31,6 +31,8 @@ def get_fastrace():
 			all_ip+=1
 			dst=line.split()[1]
 			ftrace[dst]={}
+			ftrace[dst]['bnp']=int(line.split()[9])
+			# print ftrace[dst]['bnp']
 			ftrace[dst]['hop']={}
 			line=frf.readline()
 			i=1 			#ttl from 1 for fastrace
@@ -83,7 +85,7 @@ def get_all_scamper():
 	strace={}
 	for filename in os.listdir(sys.argv[2]):
 		if ".json" == filename[-5:]:
-			print "scamper file",filename
+			print "scamper file",sys.argv[2]+filename
 			frs=open(sys.argv[2]+filename,'r')
 			while True:
 				line = frs.readline().strip()
@@ -119,23 +121,26 @@ def mutil_cmp_correct():
 	all_hop=0
 	all_same_hop=0
 	fastrace_no_hop=0
-
 	for dst in strace:
 		trace=strace[dst]
 		hops=trace['hop']
 		for i in hops:
-			#fastrace also has this hop
-			if ftrace[dst]['hop'].has_key(i):
-				all_hop+=1
-				if ftrace[dst]['hop'][i] in hops[i]:
-					# print ftrace[dst]['hop'][i] , hops[i]
-					all_same_hop+=1
+			if i >= ftrace[dst]['bnp']:
+				#fastrace also has this hop
+				if ftrace[dst]['hop'].has_key(i):
+					all_hop+=1
+					if ftrace[dst]['hop'][i] in hops[i]:
+						# print ftrace[dst]['hop'][i] , hops[i]
+						all_same_hop+=1
+					else:
+						print dst,"fastrace not in scamper on ttl",i,ftrace[dst]['hop'][i],
+						for t in hops[i]:
+							print t,
+						print "\n"
 				else:
-					print dst,"fastrace not in scamper on ttl",i,ftrace[dst]['hop'][i]
-			else:
-				fastrace_no_hop+=1
-				print dst,"ftrace no this hop",i
-	
+					fastrace_no_hop+=1
+					print dst,"ftrace no this hop ttl",i
+
 	print "fastrace no hop count",fastrace_no_hop
 	print "all_hop,all_same_hop",all_hop, all_same_hop
 	print all_same_hop*1.0/all_hop
@@ -145,21 +150,27 @@ def cmp_correct():
 	strace=get_scamper()
 	all_hop=0
 	all_same_hop=0
+	fastrace_no_hop=0
 	for dst in strace:
 		trace=strace[dst]
 		hops=trace['hop']
 		for i in hops:
-			if ftrace[dst]['hop'].has_key(i):
-				all_hop+=1
-				if ftrace[dst]['hop'][i] == hops[i]:
-					# print ftrace[dst]['hop'][i] , hops[i]
-					all_same_hop+=1
+			if i >= ftrace[dst]['bnp']:
+				if ftrace[dst]['hop'].has_key(i):
+					all_hop+=1
+					if ftrace[dst]['hop'][i] == hops[i]:
+						# print ftrace[dst]['hop'][i] , hops[i]
+						all_same_hop+=1
+					else:
+						print dst,"fastrace not in scamper on ttl",i,ftrace[dst]['hop'][i],hops[i]
 				else:
-					print dst,"fastrace not in scamper on ttl",i,ftrace[dst]['hop'][i]
-			else:
-				print "ftrace:",len(ftrace[dst]['hop']),'strace:',i
+					fastrace_no_hop+=1
+					print "ftrace:",len(ftrace[dst]['hop']),'strace:',i
+
+	print "fastrace no hop count",fastrace_no_hop
 	print "all_hop,all_same_hop",all_hop, all_same_hop
-	print all_same_hop*1.0/all_hop
+	if all_hop>0:
+		print all_same_hop*1.0/all_hop
 
 def draw(x1,y1):
 	#plt.plot(x1,y1,label='router')#,linewidth=3,color='r',marker='o', markerfacecolor='blue',markersize=12 
@@ -172,6 +183,9 @@ def draw(x1,y1):
 if __name__ == '__main__':
 	# get_fastrace()
 	# get_scamper()
-	cmp_correct()
+	# cmp_correct()
 	# get_all_scamper()
-	# mutil_cmp_correct()
+	if sys.argv[3] == "m":
+		mutil_cmp_correct()
+	else:
+		cmp_correct()

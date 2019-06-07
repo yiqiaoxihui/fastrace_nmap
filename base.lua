@@ -4,7 +4,7 @@ local math = require "math"
 local bit = require "bit"
 local bin = require "bin"
 local string = require "string"
---
+local json = require "json"
 --ICMP	TYPE
 ICMP_ECHOREPLY		=0	--/*	Echo	Reply		*/
 ICMP_DEST_UNREACH	=3	--/*	Destination	Unreachable	*/
@@ -261,12 +261,15 @@ print_tr = function(tr,src_ip,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
     -- print(OUTPUT_TYPE)
     if OUTPUT_TYPE == "file" then
 		-- fw=io.open(OUTPUT_FILENAME,'w')
+		local jo=json.generate(tr)
+	    OUTPUT_FILE_HANDLER:write(jo,"\n")
 		OUTPUT_FILE_HANDLER:write("Target ",tr['dst'] , " hop ",tr['start']," - ",tr['end'] ," from ",src_ip," ",TRR2STRING[tr['rst']+1],"\n")
 	end
     io.write("Target ",tr['dst'] , " hop ",tr['start']," - ",tr['end'] ," from ",src_ip," ",TRR2STRING[tr['rst']+1],"\n") 	--加1 table从1开始
     if (tr['start'] <= 0 or tr['end'] <= 0) then
         return
     end 
+
     for i= tr['start'],tr['end'] do
     	if OUTPUT_TYPE == "file" then
 	    	OUTPUT_FILE_HANDLER:write("~ ",i," ",tr['hop'][i]," ",tr['reply_ttl'][i]," ",tr['rtt'][i],"ms\n")
@@ -328,12 +331,12 @@ PROBING_TYPE_ARRAY	=	{
 }
 --traceroute UDP dport 53
 PROBING_DPORT_ARRAY	=	{
-	80,	54343,	0,
-	80,	44343,	80,
-	80,	55343,	49077,
-	80,	56643,	0,
-	80,	34343,	109,
-	80,	64343,	443
+	80,	33434,	0,
+	80,	33438,	80,
+	80,	33435,	49077,
+	80,	33439,	0,
+	80,	33445,	109,
+	80,	33440,	443
 }
 
 NR_PROBING_ARRAY	=18

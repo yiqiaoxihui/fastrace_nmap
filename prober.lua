@@ -82,9 +82,15 @@ function prober.send_udp_big_port(pi,send_l3_sock,device)
 	rec_socket:pcap_open(device,128,false,capture_rule_icmp)
 	rec_socket:set_timeout(pi['wt'])
 
+    -- local pktbin = bin.pack("H",
+    --   "4500 0014 0000 4000 8000 0000 0000 0000 0000 0000" ..
+    --   "0000 0000 0800 0000"
+    -- )
     local pktbin = bin.pack("H",
-      "4500 0014 0000 4000 8000 0000 0000 0000 0000 0000" ..
-      "0000 0000 0800 0000"
+		"4500 003c 273a 0000 0411 2cb6 0a0a 0b82 bca6"..
+		"908f 8be2 0035 0028 62fb 4041 4243 4445"..
+		"4647 4849 4a4b 4c4d 4e4f 5051 5253 5455"..
+		"5657 5859 5a5b 5c5d 5e5f"
     )
     local ip
     ip = packet.Packet:new(pktbin, pktbin:len())
