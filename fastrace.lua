@@ -71,16 +71,20 @@ local function hopping(dst_ip,ttl,try)
 	ALL_SEND_PACKET=ALL_SEND_PACKET+1
 	local pi={}		--探测信息
 	-- print(try)
-	local send_packet_type=PROBING_TYPE_ARRAY[try]
-	--探测类型参数
+	--error:设置不同类型时，端口也得改变，改变try即可
 	if PACKET_TYPE == "ICMP" then
-		send_packet_type=PPK_ICMPECHO
+		-- send_packet_type=PPK_ICMPECHO
+		try=3
 	elseif PACKET_TYPE == "UDP" then
-		send_packet_type=PPK_UDPBIGPORT
+		-- send_packet_type=PPK_UDPBIGPORT
+		try=2
 	elseif PACKET_TYPE == "TCP" then
-		send_packet_type=PPK_SYN
+		-- send_packet_type=PPK_SYN
+		try=1
 	else
 	end
+	local send_packet_type=PROBING_TYPE_ARRAY[try]
+	pi['dport']=PROBING_DPORT_ARRAY[try]
 	pi['dport']=PROBING_DPORT_ARRAY[try]
 	pi['sport']=math.random(0x7000, 0xffff)		--why from 7000
 	pi['wt']=2000								--wait time
@@ -227,6 +231,7 @@ local function reverse_traceroute(trace,cmptrace)
         	goto reverse_hopping_begin
         end
         if cmptrace ~= nil and cmptrace['start'] <= ttl and cmptrace['end'] >= ttl and cmptrace['hop'][ttl] == trace['hop'][ttl] then
+        	trace['BNP']=ttl
         	trace['start'] = ttl
 			if trace['rst'] == 0 then		--仅当没有TR_RESULT_GOTTHERE和TR_RESULT_FAKE
 				---print("TR_RESULT_DESIGN:",ttl,"from:",from)
@@ -706,6 +711,8 @@ local function treetrace(cidr)
 	--get first ip of subnet
 	newsr['trace']['dst']=IP_INC(NETADDR(cidr['net'],cidr['pfx']))
 	newsr['trace']['start'] = 1
+	newsr['trace']['BNP']=-1
+	newsr['trace']['cmp_ip']=0
 	-- print(newsr['trace']['dst'],newsr['trace']['start'])
 	if VERBOSE >= 1 then
 		io.write("Fastrace ",newsr['trace']['dst'],"/",newsr['pfx']," at ",os.date("%Y-%m-%d %H:%M:%S"),"\n")
@@ -758,6 +765,8 @@ local function treetrace(cidr)
 			-- io.write('get newsr by oldsr:',newsr['trace']['dst'],"/",oldsr['pfx'],"\n")
 			io.write("Fastrace ",newsr['trace']['dst'],"/",oldsr['pfx']," at ",os.date("%Y-%m-%d %H:%M:%S"),"\n")
 		end
+		newsr['trace']['BNP']=-1
+		newsr['trace']['cmp_ip']=oldsr['trace']['dst']
 		if forward_reverse(newsr['trace'],oldsr['trace'],oldsr['trace']) == -1 then
 			s:clear()
 			io.write("Fastrace STOP IN treetrace->forward_reverse \n")
@@ -898,7 +907,6 @@ local function print_help()
 end
 
 action=function(host)
-
 	local start_time=os.time()
 	print("__________________")
 	-- print(MID_IP("1.1.1.1",29))

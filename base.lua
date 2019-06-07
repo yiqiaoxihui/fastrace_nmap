@@ -261,11 +261,11 @@ print_tr = function(tr,src_ip,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
     -- print(OUTPUT_TYPE)
     if OUTPUT_TYPE == "file" then
 		-- fw=io.open(OUTPUT_FILENAME,'w')
-		local jo=json.generate(tr)
-	    OUTPUT_FILE_HANDLER:write(jo,"\n")
-		OUTPUT_FILE_HANDLER:write("Target ",tr['dst'] , " hop ",tr['start']," - ",tr['end'] ," from ",src_ip," ",TRR2STRING[tr['rst']+1],"\n")
+		-- local jo=json.generate(tr)
+	 --    OUTPUT_FILE_HANDLER:write(jo,"\n")
+		OUTPUT_FILE_HANDLER:write("Target ",tr['dst'] , " hop ",tr['start']," - ",tr['end'] ," from ",src_ip," BNP: ",tr['BNP']," cmp_ip: ",tr['cmp_ip']," ",TRR2STRING[tr['rst']+1],"\n")
 	end
-    io.write("Target ",tr['dst'] , " hop ",tr['start']," - ",tr['end'] ," from ",src_ip," ",TRR2STRING[tr['rst']+1],"\n") 	--加1 table从1开始
+    io.write("Target ",tr['dst'] , " hop ",tr['start']," - ",tr['end'] ," from ",src_ip," BNP: ",tr['BNP']," cmp_ip: ",tr['cmp_ip']," ",TRR2STRING[tr['rst']+1],"\n") 	--加1 table从1开始
     if (tr['start'] <= 0 or tr['end'] <= 0) then
         return
     end 
