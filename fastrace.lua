@@ -120,18 +120,19 @@ local function hopping(dst_ip,ttl,try)
 	if VERBOSE >= 1 then
 		print_ri(pi,rpk_type,from,rtt,reply_ttl)
 	end
-	if rpk_type ~= RPK_TIMEOUT then
-		if global_node[from] == nil then
-			ALL_NODE = ALL_NODE +1
-			--若为中间路由器
-			if from ~= dst_ip then
-				MID_ROUTER_COUNT=MID_ROUTER_COUNT+1
-			end
-		end
-		EVERY_TATGET_SEND[ALL_NODE]=ALL_SEND_PACKET
+	-- if rpk_type ~= RPK_TIMEOUT then
+	-- 	if global_node[from] == nil then
+	-- 		-- print("why ",from)
+	-- 		ALL_NODE = ALL_NODE +1
+	-- 		--若为中间路由器
+	-- 		if from ~= dst_ip then
+	-- 			MID_ROUTER_COUNT=MID_ROUTER_COUNT+1
+	-- 		end
+	-- 	end
+	-- 	EVERY_TATGET_SEND[ALL_NODE]=ALL_SEND_PACKET
 
-		MID_ROUTER_SEND[MID_ROUTER_COUNT]=ALL_SEND_PACKET
-	end
+	-- 	MID_ROUTER_SEND[MID_ROUTER_COUNT]=ALL_SEND_PACKET
+	-- end
 	return rpk_type,from,rtt,reply_ttl
 	-- body
 end
@@ -230,7 +231,7 @@ local function reverse_traceroute(trace,cmptrace)
         	end
         	goto reverse_hopping_begin
         end
-        if cmptrace ~= nil and cmptrace['start'] <= ttl and cmptrace['end'] >= ttl and cmptrace['hop'][ttl] == trace['hop'][ttl] then
+        if cmptrace ~= nil and cmptrace['start'] <= ttl and cmptrace['end'] >= ttl and cmptrace['hop'][ttl]~=0 and cmptrace['hop'][ttl] == trace['hop'][ttl] then
         	trace['BNP']=ttl
         	trace['start'] = ttl
 			if trace['rst'] == 0 then		--仅当没有TR_RESULT_GOTTHERE和TR_RESULT_FAKE
@@ -504,16 +505,19 @@ function forward_reverse(trace,fcmptrace,rcmptrace)
 	return 1
 end
 
-local function test_max_fpx(new_link,new_node,pfx)
+local function test_max_fpx(new_link,new_node,pfx,new_router)
 	for i=1, 31 do
 		if pfx <=i then
 			if TEST_PFX_INFO[i] ~= nil then
 				TEST_PFX_INFO[i]['link']=TEST_PFX_INFO[i]['link']+new_link
 				TEST_PFX_INFO[i]['node']=TEST_PFX_INFO[i]['node']+new_node
+				TEST_PFX_INFO[i]['router']=TEST_PFX_INFO[i]['router']+new_router
 			else
 				TEST_PFX_INFO[i]={}
 				TEST_PFX_INFO[i]['link']=0
 				TEST_PFX_INFO[i]['node']=0
+				TEST_PFX_INFO[i]['router']=0
+				TEST_PFX_INFO[i]['router']=new_router
 				TEST_PFX_INFO[i]['link']=TEST_PFX_INFO[i]['link']+new_link
 				TEST_PFX_INFO[i]['node']=TEST_PFX_INFO[i]['node']+new_node
 			end
@@ -534,6 +538,7 @@ end
 local function get_new_link_node_number(trace,pfx)
 	local new_link = 0
 	local new_node = 0
+	local new_router=0
 	local link_key
 	if DEBUG == 1 or VERBOSE>=3 then
 		print("^^^^^^^^^^^^^^^global_node^^^^^^^^^^^^^^^^^^")
@@ -565,21 +570,34 @@ local function get_new_link_node_number(trace,pfx)
 				-- return 1
 			end
 		end
+
 		if trace['hop'][i] ~= 0 and global_node[trace['hop'][i]] == nil then
 			new_node = new_node + 1
-			-- ALL_NODE = ALL_NODE +1
+			new_router=new_router+1
+			ALL_NODE = ALL_NODE +1
+			--全部目标发包变化
+			EVERY_TATGET_SEND[ALL_NODE]=ALL_SEND_PACKET
+			--路由器发包变化
+			MID_ROUTER_COUNT=MID_ROUTER_COUNT+1
+			MID_ROUTER_SEND[MID_ROUTER_COUNT]=ALL_SEND_PACKET
 			global_node[trace['hop'][i]] = 1
-			if DEBUG == 1 or VERBOSE >=2 then
+			if DEBUG == 1 or VERBOSE >=1 then
 				io.write('new node:',trace['hop'][i],"\n")
 			end
 			-- return 1
 		end
 	end
-	--目标活的也算
+
+	--统计最后的节点
 	if trace['hop'][trace['end']] ~= nil and trace['hop'][trace['end']] ~= 0 and global_node[trace['hop'][trace['end']]] == nil then
 		new_node = new_node + 1
-		-- ALL_NODE = ALL_NODE +1
-		-- EVERY_TATGET_SEND[ALL_NODE]=ALL_SEND_PACKET
+		if trace['hop'][trace['end']] ~= trace['dst'] then 	--不是目标，就是路由器
+			new_router=new_router+1
+			MID_ROUTER_COUNT=MID_ROUTER_COUNT+1
+			MID_ROUTER_SEND[MID_ROUTER_COUNT]=ALL_SEND_PACKET
+		end
+		ALL_NODE = ALL_NODE +1
+		EVERY_TATGET_SEND[ALL_NODE]=ALL_SEND_PACKET
 		global_node[trace['hop'][trace['end']]] = 1
 		if DEBUG == 1 or VERBOSE >=2 then
 			io.write('new node:',trace['hop'][i],"\n")
@@ -591,9 +609,9 @@ local function get_new_link_node_number(trace,pfx)
 		TARGET_ARRIVE=TARGET_ARRIVE+1
 	end
 	--测试不同前缀下的边，节点获取情况
-	test_max_fpx(new_node,new_link,pfx)
+	test_max_fpx(new_node,new_link,pfx,new_router)
 	if DEBUG == 1 or VERBOSE>=1 then
-		print("*****packet,all link, node,mid-router, find new link, node******",ALL_SEND_PACKET,ALL_LINK,ALL_NODE,MID_ROUTER_COUNT,new_link,new_node)
+		print("*****packet,all link, node,mid-router, find new link, node,******",ALL_SEND_PACKET,ALL_LINK,ALL_NODE,MID_ROUTER_COUNT,new_link,new_node,"new router ",new_router)
 	end
 	return new_link,new_node
 end
@@ -1157,7 +1175,7 @@ action=function(host)
 	local RUNTIME=(end_time-start_time)/60
     if OUTPUT_TYPE == "file" then
     	for k,v in pairs(TEST_PFX_INFO) do
-    		OUTPUT_FILE_HANDLER:write("TEST_PFX_INFO: ",k," ",v['link']," ",v['node'],"\n")
+    		OUTPUT_FILE_HANDLER:write("TEST_PFX_INFO: ",k," ",v['link']," ",v['node']," ",v['router'],"\n")
     	end
 		for k,v in pairs(MID_ROUTER_SEND) do
 			OUTPUT_FILE_HANDLER:write("MID_ROUTER_SEND: ",k," ",v,"\n")
@@ -1167,6 +1185,7 @@ action=function(host)
     	end
 		OUTPUT_FILE_HANDLER:write("ALL_TARGET: ",ALL_TARGET,"\n")
     	OUTPUT_FILE_HANDLER:write("ALL_NODE: ",ALL_NODE,"\n")
+    	OUTPUT_FILE_HANDLER:write("MID_ROUTER_COUNT: ",MID_ROUTER_COUNT,"\n")
 		OUTPUT_FILE_HANDLER:write("TARGET_ARRIVE: ",TARGET_ARRIVE,"\n")
 
     	OUTPUT_FILE_HANDLER:write("ALL_LINK: ",ALL_LINK,"\n")
@@ -1193,7 +1212,8 @@ action=function(host)
 	end
 
 	for k,v in pairs(TEST_PFX_INFO) do
-		io.write("TEST_PFX_INFO: ",k," ",v['link']," ",v['node'],"\n")
+		
+		io.write("TEST_PFX_INFO: ",k," ",v['link']," ",v['node']," ",v['router'],"\n")
 	end
 	for k,v in pairs(MID_ROUTER_SEND) do
 		print("MID_ROUTER_SEND: ",k,v)
@@ -1203,6 +1223,7 @@ action=function(host)
 	end
 	print("ALL_TARGET: ",ALL_TARGET)
 	print("ALL_NODE: ",ALL_NODE)
+	print("MID_ROUTER_COUNT: ",MID_ROUTER_COUNT)
 	print("TARGET_ARRIVE: ",TARGET_ARRIVE)
 	print("ALL_LINK: ",ALL_LINK)
 	print("TO_TARGET_LINK: ",TO_TARGET_LINK)

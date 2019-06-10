@@ -395,3 +395,5 @@ MID_ROUTER_COUNT	=0  --中间路由器回复
 
 MID_ROUTER_SEND		={}	--发现新中间路由器的发包数量
 
+ALL_ROUTER			=0 	--发现路由数目
+

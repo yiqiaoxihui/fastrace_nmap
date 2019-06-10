@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding:utf-8 -*-
 import os
 import os.path
 import sys
@@ -46,6 +48,8 @@ def get_link_node_from_dir():
 					len_hops=len(hops)
 					if len_hops<=0:
 						continue
+					if int(hops[0]['probe_ttl'])==1:
+						link_set.add(jo['src']+" "+hops[0]['addr'])	
 					for i in range(0,len_hops-1):
 						if (int)(hops[i]['probe_ttl']) +1  == int(hops[i+1]['probe_ttl']):
 							# print (hops[i]['probe_ttl']),(hops[i+1]['probe_ttl'])
@@ -59,15 +63,9 @@ def get_link_node_from_dir():
 								str_ip=d+" "+s
 							else:
 								str_ip=s+" "+d
-							if IP(s).iptype() == "PRIVATE" or IP(d).iptype() =="PRIVATE":
-								# print "PRIVATE",s,d
-								pass
-							else:
-								link_set.add(str_ip)
-							if IP(s).iptype() != "PRIVATE":
-								node_set.add(s)
-							if IP(d).iptype() != "PRIVATE":
-								node_set.add(d)
+							link_set.add(str_ip)
+						node_set.add(hops[i]['addr'])
+					node_set.add(hops[len_hops-1]['addr'])
 		fr.close()
 	# for dst in dst_set:
 	# 	if dst in node_set:

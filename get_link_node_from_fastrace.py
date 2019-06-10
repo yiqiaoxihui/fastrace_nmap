@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding:utf-8 -*-
 import os
 import os.path
 import sys
@@ -35,14 +37,22 @@ def get_node_link():
 		if "Target" in pline:
 			dst= pline.split()[1]
 			dst_set.add(dst)
+			src=pline.split()[7]
+			if line[0] == '~':
+				link_set.add(src+" "+line.split()[2])
+		if pline[0] == '~':
+			node_set.add(pline.split()[2])
+			if pline.split()[2]!=dst:
+				mid_router_set.add(pline.split()[2])
 		if line[0] == '~':
 			node_set.add(line.split()[2])
+			if line.split()[2]!=dst:
+				mid_router_set.add(line.split()[2])
 		if "Got there" in line:
 			reply_dst_set.add(line.split()[1])
 		if pline[0] == '~' and line[0] == '~':
 			s=pline.split()[2]
 			d=line.split()[2]
-			mid_router_set.add(s)
 			ip_s=socket.ntohl(struct.unpack("I",socket.inet_aton(s))[0])
 			ip_d=socket.ntohl(struct.unpack("I",socket.inet_aton(d))[0])
 			if ip_s ==0 or ip_d == 0:
@@ -75,7 +85,7 @@ def get_node_link():
 	print "dst link",dst_link_count
 	print "reply dst count ",len(reply_dst_set)
 	print "mid router count",len(mid_router_set)
-	print "the dst also is mid route:",len(reply_dst_set)+len(mid_router_set)-len(node_set)
+	# print "the dst also is mid route:",len(reply_dst_set)+len(mid_router_set)-len(node_set)
 	print "rely dst/all dst",len(reply_dst_set)*1.0/len(dst_set)
 
 def draw(edge_set,node_set):

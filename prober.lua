@@ -42,8 +42,8 @@ function prober.send_icmp_echo(pi,send_l3_sock,device)
 	local start_time,end_time
 	start_time=stdnse.clock_ms()
 	send_l3_sock:ip_send(ip.buf)
-	send_l3_sock:ip_send(ip.buf)
-	send_l3_sock:ip_send(ip.buf)
+	-- send_l3_sock:ip_send(ip.buf)
+	-- send_l3_sock:ip_send(ip.buf)
 	local status,len,l2_icmp,l3_icmp,time=icmp_rec_socket:pcap_receive()
 	if status then
 		end_time=stdnse.clock_ms()
@@ -111,8 +111,8 @@ function prober.send_udp_big_port(pi,send_l3_sock,device)
 	local start_time,end_time
 	start_time=stdnse.clock_ms()
 	send_l3_sock:ip_send(ip.buf)
-	send_l3_sock:ip_send(ip.buf)
-	send_l3_sock:ip_send(ip.buf)
+	-- send_l3_sock:ip_send(ip.buf)
+	-- send_l3_sock:ip_send(ip.buf)
 	local status,len,l2_packet,l3_packet,time=rec_socket:pcap_receive()
 	if status then
 		-- print("get packet back")
@@ -186,8 +186,8 @@ function prober.send_tcp_syn(pi,send_l3_sock,device)
 	local start_time,end_time
 	start_time=stdnse.clock_ms()
 	send_l3_sock:ip_send(ip.buf)
-	send_l3_sock:ip_send(ip.buf)
-	send_l3_sock:ip_send(ip.buf)
+	-- send_l3_sock:ip_send(ip.buf)
+	-- send_l3_sock:ip_send(ip.buf)
 	local status,len,l2_packet,l3_packet,time=rec_socket:pcap_receive()
 	if status then
 		end_time=stdnse.clock_ms()
