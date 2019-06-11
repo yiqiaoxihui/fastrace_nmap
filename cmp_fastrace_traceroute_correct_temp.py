@@ -31,6 +31,8 @@ def get_fastrace_packet_by_file(ffile):
 	fastrace_dic['BNP_COUNT']=0
 	fastrace_dic['NNS_COUNT']=0
 	fastrace_dic['RUNTIME']=0
+	fastrace_dic['MAX_HOP_AVG']=0
+	fastrace_dic['BNP_AVG']=0
 	fastrace_dic['all_hop']=0
 	fastrace_dic['src']=0
 	fastrace_dic['info']={}
@@ -43,7 +45,7 @@ def get_fastrace_packet_by_file(ffile):
 	lines=fr.readlines()
 	if len(lines) <2 or ("RUNTIME" not in lines[-1]):	#文件未正常结束
 		fastrace_dic['broken']=1
-		print ffile+": broken!"
+		print "!!!!!!!!!!!!!!!!!!!",ffile+": no complete !"
 		return fastrace_dic
 	pline=""
 	line=""
@@ -51,7 +53,8 @@ def get_fastrace_packet_by_file(ffile):
 	line=fr.readline()
 	dst=""
 	if not line:
-		print("file in empty")
+		print "!!!!!!!!!!!!!!!!!!!",ffile+": no complete !"
+		fastrace_dic['broken']=1
 		return fastrace_dic
 	while True:
 		pline=line
@@ -135,14 +138,16 @@ def get_fastrace_packet_by_file(ffile):
 				fastrace_dic['link_set'].add(str_ip)
 				# ftrace_all_link.add(str_ip)
 		except Exception as e:
-			print ffile,e
+			print ffile,"error in get_fastrace_packet_by_file",e
 			print pline
 			print line
 			fastrace_dic['broken']=1
 			return fastrace_dic
-	ftrace_all_link=ftrace_all_link.union(fastrace_dic['link_set'])
-	ftrace_all_node=ftrace_all_node.union(fastrace_dic['node_set'])
-	ftrace_all_router=ftrace_all_router.union(fastrace_dic['node_set'])
+	if len(fastrace_dic['link_set'])==0 or len(fastrace_dic['node_set'])==0 or fastrace_dic['ALL_TARGET']==0:
+		fastrace_dic['broken']=1
+		print "!!!!!!!!!!!!!!!!!!!",ffile,"no any data in file!!!!!!!!!!!!!!!"
+		return fastrace_dic
+
 	fastrace_dic['src']=src
 	fastrace_dic['MID_ROUTER_COUNT']=len(fastrace_dic['router_set'])
 	print "fastrace"
@@ -166,11 +171,13 @@ def get_fastrace_packet_by_file(ffile):
 	print "RUNTIME",fastrace_dic['RUNTIME']
 	if fastrace_dic['ALL_SEND_PACKET']>0:
 		print "rebundary rate:",fastrace_dic['BNP_REDUNDANCE_COUNT']*1.0/fastrace_dic['ALL_SEND_PACKET']
-	
-	bnp_sum+=fastrace_dic['BNP_COUNT']
-	fastrace_all_target+=fastrace_dic['ALL_TARGET']
-	all_fastrace_send+=fastrace_dic['ALL_SEND_PACKET']
-	all_fastrace_rebund+=fastrace_dic['BNP_REDUNDANCE_COUNT']
+	for dst in fastrace_dic['info']:
+		fastrace_dic['MAX_HOP_AVG']+=fastrace_dic['info'][dst]['maxhop']
+		fastrace_dic['BNP_AVG']+=fastrace_dic['info'][dst]['bnp']
+	fastrace_dic['MAX_HOP_AVG']	=fastrace_dic['MAX_HOP_AVG']*1.0/fastrace_dic['ALL_TARGET']
+	fastrace_dic['BNP_AVG']		=fastrace_dic['BNP_AVG']*1.0/fastrace_dic['ALL_TARGET']
+	print "MAX_HOP_AVG",fastrace_dic['MAX_HOP_AVG']
+	print "BNP_AVG",fastrace_dic['BNP_AVG']
 	return fastrace_dic
 def get_scamper_packet_by_file(sfile):
 	hops={}
@@ -194,6 +201,7 @@ def get_scamper_packet_by_file(sfile):
 	scamper_dic['link_set']=set()
 	scamper_dic['node_set']=set()
 	scamper_dic['router_set']=set()
+	scamper_dic['broken']=0
 	stop_time=0
 	start_time=0
 	# for file in list_dir:
@@ -281,9 +289,11 @@ def get_scamper_packet_by_file(sfile):
 	# for dst in dst_set:
 	# 	if dst in node_set:
 	# 		node_set.remove(dst)
-	strace_all_node=strace_all_node.union(scamper_dic['node_set'])
-	strace_all_link=strace_all_link.union(scamper_dic['link_set'])
-	strace_all_router=strace_all_router.union(scamper_dic['link_set'])
+	if len(scamper_dic['link_set'])==0 or len(scamper_dic['node_set'])==0:
+		scamper_dic['broken']=1
+		print "!!!!!!!!!!!!!!!!!!!",sfile,"no any data in file!!!!!!!!!!!!!!!"
+		return scamper_dic
+
 	scamper_dic['src']=src
 	scamper_dic['ALL_NODE']=len(scamper_dic['node_set'])	
 	scamper_dic['ALL_LINK']=len(scamper_dic['link_set'])	
@@ -301,8 +311,7 @@ def get_scamper_packet_by_file(sfile):
 	# print "RUNTIME",fastrace_dic['RUNTIME']
 	if scamper_dic['RUNTIME']!=0:
 		print "avg send packet",1.0*scamper_dic['ALL_SEND_PACKET']/scamper_dic['RUNTIME']
-	all_scamper_send+=scamper_dic['ALL_SEND_PACKET']
-	scamper_all_target+=scamper_dic['ALL_TARGET']
+
 	return scamper_dic
 # def every_packet_rate(ffile,sfile):
 # 	fastrace_dic=get_fastrace_packet_by_file(ffile)
@@ -371,6 +380,8 @@ def every_cmp_correct(fastrace_dic,scamper_dic):
 
 def cmp_correct150():
 	global bnp_sum,fastrace_all_target,all_fastrace_send,all_fastrace_rebund
+	global all_scamper_send,scamper_all_target
+	global all_bnp_avg_len,all_fastrace_max_hop_avg_len,bnp_avg_in_max_hop
 	global ftrace_all_link,ftrace_all_node,ftrace_all_router
 	global strace_all_node,strace_all_link,strace_all_router
 	sroot=sys.argv[2]
@@ -380,6 +391,7 @@ def cmp_correct150():
 	both_y=[]
 	bnp_y=[]
 	i=1
+	data_number=0
 	useful_data=0
 	for dirpath, dirnames, filenames in os.walk(froot):
 		# for filepath in filenames:
@@ -388,17 +400,51 @@ def cmp_correct150():
 			# print dirname
 			# print dirpath
 			ffile=dirpath+dirname+"/test-fastrace"+sys.argv[4]+".fastrace"
+			f_ip_file=dirpath+dirname+"/test-fastrace"+sys.argv[4]+".ip_list"
 			if os.path.exists(ffile):
 				# print sfile
 				sfile=sroot+dirname+"/test-fastrace-scamper.json"
+				s_ip_file=sroot+dirname+"/test-fastrace-scamper.ip_list"
 				if os.path.exists(sfile):
 					print "----------------------"
 					print sfile
 					print ffile
+					if os.path.exists(f_ip_file):
+						ffr=open(f_ip_file,'r')
+						print ffr.readline().strip()
+						ffr.close()
+					if os.path.exists(s_ip_file):
+						sfr=open(s_ip_file,'r')
+						print sfr.readline().strip()
+						sfr.close()
+
 					# every_packet_rate(ffile,sfile)
 					fastrace_dic=get_fastrace_packet_by_file(ffile)
 					if fastrace_dic['broken']!=1:
 						scamper_dic=get_scamper_packet_by_file(sfile)
+						if scamper_dic['ALL_TARGET']!=fastrace_dic['ALL_TARGET']:
+							print ">>>>>>>>>>>>>>>>>>",scamper_dic['ALL_TARGET'],fastrace_dic['ALL_TARGET']
+							continue
+						print data_number
+						data_number+=1
+						ftrace_all_link=ftrace_all_link.union(fastrace_dic['link_set'])
+						ftrace_all_node=ftrace_all_node.union(fastrace_dic['node_set'])
+						ftrace_all_router=ftrace_all_router.union(fastrace_dic['node_set'])
+						fastrace_all_target+=fastrace_dic['ALL_TARGET']
+						all_fastrace_send+=fastrace_dic['ALL_SEND_PACKET']
+						all_fastrace_rebund+=fastrace_dic['BNP_REDUNDANCE_COUNT']
+						bnp_sum+=fastrace_dic['BNP_COUNT']
+						all_fastrace_max_hop_avg_len+=fastrace_dic["MAX_HOP_AVG"]
+						all_bnp_avg_len+=fastrace_dic['BNP_AVG']
+						bnp_avg_in_max_hop+=(fastrace_dic['BNP_AVG']-1)*1.0/fastrace_dic['MAX_HOP_AVG']
+
+
+						all_scamper_send+=scamper_dic['ALL_SEND_PACKET']
+						scamper_all_target+=scamper_dic['ALL_TARGET']
+						strace_all_node=strace_all_node.union(scamper_dic['node_set'])
+						strace_all_link=strace_all_link.union(scamper_dic['link_set'])
+						strace_all_router=strace_all_router.union(scamper_dic['link_set'])
+
 						if scamper_dic['ALL_LINK']!=0:
 							print "link rate(f/s)",fastrace_dic['ALL_LINK']*1.0/scamper_dic['ALL_LINK']
 						if  scamper_dic['ALL_NODE']!=0:
@@ -409,7 +455,7 @@ def cmp_correct150():
 						if fastrace_dic['ALL_TARGET'] != scamper_dic['ALL_TARGET']:
 							print fastrace_dic['file'],fastrace_dic['ALL_TARGET'],scamper_dic['ALL_TARGET'],"ip count not same"
 							continue
-						# r=every_cmp_correct(fastrace_dic,scamper_dic)
+						r=every_cmp_correct(fastrace_dic,scamper_dic)
 						# if r!=0 and r[1]  > 0.01:
 						# 	i+=1
 						# 	x.append(i)
@@ -419,12 +465,22 @@ def cmp_correct150():
 			else:
 				pass
 				print "150 ftrace data no exist",dirname
+	try:
+		all_fastrace_max_hop_avg_len=all_fastrace_max_hop_avg_len/data_number
+		all_bnp_avg_len=all_bnp_avg_len/data_number
+		bnp_avg_in_max_hop=bnp_avg_in_max_hop/data_number
+	except Exception as e:
+		print "error:",e
 
+	print ">150 fastrace_all_target",fastrace_all_target,bnp_sum*1.0/fastrace_all_target
 	print "150 bnp_sum",bnp_sum
-	print "150 fastrace_all_target",fastrace_all_target,bnp_sum*1.0/fastrace_all_target
-	print "150 scamper_all_target",scamper_all_target
 	print "150 fastrace all dst_packet",all_fastrace_send
 	print "150 fastrace all dst_rebund",all_fastrace_rebund,all_fastrace_send+all_fastrace_rebund,all_fastrace_rebund*1.0/(all_fastrace_send+all_fastrace_rebund)
+	print "150 all_fastrace_max_hop_avg_len",all_fastrace_max_hop_avg_len
+	print "150 all_bnp_avg_len",all_bnp_avg_len
+	print "150 bnp_avg_in_max_hop",bnp_avg_in_max_hop
+
+	print ">150 scamper_all_target",scamper_all_target
 	print "150 scamper all packet,f/s",all_scamper_send, all_fastrace_send*1.0/all_scamper_send
 	print "150 ftrace_all_node,ftrace_all_link,ftrace_all_router,strace_all_node,strace_all_link,strace_all_router"
 	print len(ftrace_all_node),len(ftrace_all_link),len(ftrace_all_router),len(strace_all_node),len(strace_all_link),len(strace_all_router)
@@ -447,6 +503,7 @@ def cmp_correct150():
 
 if __name__ == '__main__':
 	global bnp_sum,fastrace_all_target,scamper_all_target
+	global all_bnp_avg_len,all_fastrace_max_hop_avg_len,bnp_avg_in_max_hop
 	global all_fastrace_send,all_fastrace_rebund,all_scamper_send
 	global ftrace_all_link,ftrace_all_node,ftrace_all_router
 	global strace_all_node,strace_all_link,strace_all_router
@@ -463,7 +520,9 @@ if __name__ == '__main__':
 	all_fastrace_send=0
 	all_fastrace_rebund=0
 	all_scamper_send=0
-
+	bnp_avg_in_max_hop=0
+	all_fastrace_max_hop_avg_len=0
+	all_bnp_avg_len=0
 	if sys.argv[3] == "m":
 		mutil_cmp_correct()
 	elif sys.argv[3] == "n":
