@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-# -*- coding:utf-8 -*-
+# -*- coding: utf-8 -*-
 import os
 import os.path
 import sys
@@ -13,141 +12,12 @@ import socket
 import json
 import matplotlib.pyplot as plt 
 
-global bnp_sum,all_dst_sum,all_dst_packet,all_dst_rebund
-
-def get_fastrace_by_file(ffile):
-	global ftrace_all_node,ftrace_all_link,strace_all_node,strace_all_link
-	all_ip=0
-	all_hop=0
-	frf=open(ffile,'r')
-	ftrace={}
-	line=frf.readline()
-	node=0
-	link=0
-	router_set=set()
-	avg_maxhop=0
-	avg_bnp=0
-	while True:
-		# pline=line
-		if "Target" in line:
-			all_ip+=1
-			dst=line.split()[1]
-			ftrace[dst]={}
-			ftrace[dst]['bnp']=0
-			ftrace[dst]['hop']={}
-			ftrace[dst]['maxhop']=0
-
-			if len(line.split())>=13:
-				ftrace[dst]['bnp']=int(line.split()[9])
-			# print ftrace[dst]['bnp']
-			line=frf.readline()
-			i=1 			#ttl from 1 for fastrace
-			# print "Target",dst
-			if not line:
-				break
-			while line[0]=="~":
-				# print i,line.split()[2]
-				if len(line.split())<3:
-					print "ftrace no complete"
-					return ftrace
-				if line.split()[2] != "0":
-					all_hop+=1
-					ftrace_all_node.add(line.split()[2])
-					if dst != line.split()[2]:
-						router_set.add(line.split()[2])
-					ftrace[dst]['hop'][i]=line.split()[2]
-					ftrace[dst]['maxhop']=i
-				line=frf.readline()
-				i+=1
-				if not line:
-					break
-			while "Target" not in line:
-				if "ALL_LINK" in line:
-					link=int(line.split()[1])
-				if "ALL_NODE" in line:
-					node=int(line.split()[1])
-				line=frf.readline()
-				if not line:
-					break
-		if not line:
-			break
-	frf.close()
-	if len(ftrace)<4096:
-		return ftrace
-	for dst in ftrace:
-		avg_maxhop+= ftrace[dst]['maxhop']
-		avg_bnp+= ftrace[dst]['bnp']
-	avg_maxhop=avg_maxhop*1.0/len(ftrace)
-	avg_bnp=avg_bnp*1.0/len(ftrace)
-
-	print "fastrace,all_hop,link,node,router",all_ip,all_hop,link,node,len(router_set)
-	if avg_maxhop>0:
-		print "fastrace avg_maxhop,avg_bnp",avg_maxhop,avg_bnp,avg_bnp*1.0/avg_maxhop
-	return ftrace
-def get_scamper_by_file(sfile):
-	all_ip=0
-	frs=open(sfile,'r')
-	strace={}
-	all_hop=0
-	link_set=set()
-	node_set=set()
-	router_set=set()
-	while True:
-		line = frs.readline()
-		if not line:
-			break
-		else:
-			jo=json.loads(line)
-			if jo.has_key('dst')==False:
-				continue
-			all_ip+=1
-			dst=jo['dst']
-			strace[dst]={}
-			strace[dst]['maxhop']=0
-			strace[dst]['hop']={}
-			if jo.has_key('hops'):
-					hops=jo['hops']
-					len_hops=len(hops)
-					if len_hops<=0:
-						continue
-					if int(hops[0]['probe_ttl'])==1:
-						link_set.add(jo['src']+" "+hops[0]['addr'])
-					for i in range(0,len_hops-1):
-						router_set.add(hops[i]['addr']) #路由器
-						if (int)(hops[i]['probe_ttl']) +1  == int(hops[i+1]['probe_ttl']):
-							# print (hops[i]['probe_ttl']),(hops[i+1]['probe_ttl'])
-							s=hops[i]['addr']
-							d=hops[i+1]['addr']
-							if s == jo['dst']:
-								print "how it come",jo['dst'],i
-							ip_s=socket.ntohl(struct.unpack("I",socket.inet_aton(s))[0])
-							ip_d=socket.ntohl(struct.unpack("I",socket.inet_aton(d))[0])
-							if ip_s>ip_d:
-								str_ip=d+" "+s
-							else:
-								str_ip=s+" "+d
-							link_set.add(str_ip)
-						node_set.add(hops[i]['addr'])
-						all_hop+=1
-						#每一跳
-						strace[dst]['hop'][int(hops[i]['probe_ttl'])]=hops[i]['addr']
-						strace[dst]['maxhop']=int(hops[i]['probe_ttl'])
-					#最后一个节点
-					node_set.add(hops[len_hops-1]['addr'])
-					all_hop+=1
-					strace[dst]['hop'][int(hops[len_hops-1]['probe_ttl'])]=hops[len_hops-1]['addr']
-					strace[dst]['maxhop']=int(hops[len_hops-1]['probe_ttl'])
-					#最后一条
-					if hops[len_hops-1]['addr'] !=jo['dst']:
-						router_set.add(hops[len_hops-1]['addr'])
-					# print hop['probe_ttl'],hop['addr']	发现路由器数量，发包数量
-	frs.close()
-	print "scamper,hop,link,node,router",all_ip,all_hop,len(link_set),len(node_set),len(router_set)
-	return strace
+global bnp_sum,fastrace_all_target,all_fastrace_send,all_fastrace_rebund
 
 def get_fastrace_packet_by_file(ffile):
-	global ftrace_all_node,ftrace_all_link,strace_all_node,strace_all_link
-	global bnp_sum,all_dst_sum,all_dst_packet,all_dst_rebund
+	global ftrace_all_link,ftrace_all_node,ftrace_all_router
+	global strace_all_node,strace_all_link,strace_all_router
+	global bnp_sum,fastrace_all_target,all_fastrace_send,all_fastrace_rebund
 	fastrace_dic={}
 	fastrace_dic['file']=ffile
 	fastrace_dic['ALL_TARGET']=0
@@ -208,10 +78,11 @@ def get_fastrace_packet_by_file(ffile):
 			fastrace_dic['RUNTIME']=int(line.split()[1].split('.')[0])
 		try:
 			if "Target" in pline:		#获取源与第一跳链接
-				dst= pline.split()[1]
-				# print pline
+				dst= pline.split()[1]#.decode('unicode_escape')
 				src=pline.split()[7]
 				#记录每一跳
+				# print "fastrace",type(dst),dst
+				dst=str(dst)
 				fastrace_dic['info'][dst]={}
 				fastrace_dic['info'][dst]['bnp']=0
 				fastrace_dic['info'][dst]['hop']={}
@@ -242,7 +113,7 @@ def get_fastrace_packet_by_file(ffile):
 					# ftrace_all_node.add(node)
 					fastrace_dic['node_set'].add(node)
 					if node!=dst:			#统计中间路由器
-						fastrace_dic['MID_ROUTER_COUNT']+=1
+						# fastrace_dic['MID_ROUTER_COUNT']+=1
 						fastrace_dic['router_set'].add(node)
 					#先读目标，后读跳,获取每一跳
 					fastrace_dic['all_hop']+=1
@@ -271,7 +142,9 @@ def get_fastrace_packet_by_file(ffile):
 			return fastrace_dic
 	ftrace_all_link=ftrace_all_link.union(fastrace_dic['link_set'])
 	ftrace_all_node=ftrace_all_node.union(fastrace_dic['node_set'])
+	ftrace_all_router=ftrace_all_router.union(fastrace_dic['node_set'])
 	fastrace_dic['src']=src
+	fastrace_dic['MID_ROUTER_COUNT']=len(fastrace_dic['router_set'])
 	print "fastrace"
 	print "src",fastrace_dic['src']
 	print "broken",fastrace_dic['broken']
@@ -295,14 +168,16 @@ def get_fastrace_packet_by_file(ffile):
 		print "rebundary rate:",fastrace_dic['BNP_REDUNDANCE_COUNT']*1.0/fastrace_dic['ALL_SEND_PACKET']
 	
 	bnp_sum+=fastrace_dic['BNP_COUNT']
-	all_dst_sum+=fastrace_dic['ALL_TARGET']
-	all_dst_packet+=fastrace_dic['ALL_SEND_PACKET']
-	all_dst_rebund+=fastrace_dic['BNP_REDUNDANCE_COUNT']
+	fastrace_all_target+=fastrace_dic['ALL_TARGET']
+	all_fastrace_send+=fastrace_dic['ALL_SEND_PACKET']
+	all_fastrace_rebund+=fastrace_dic['BNP_REDUNDANCE_COUNT']
 	return fastrace_dic
 def get_scamper_packet_by_file(sfile):
 	hops={}
-	global ftrace_all_node,ftrace_all_node,strace_all_node,strace_all_link
-	global all_scamper_send
+	global ftrace_all_link,ftrace_all_node,ftrace_all_router
+	global strace_all_node,strace_all_link,strace_all_router
+	global all_scamper_send,all_fastrace_send
+	global scamper_all_target,fastrace_all_target
 	# list_dir = os.listdir(file_dir)
 	scamper_dic={}
 	scamper_dic['file']=sfile
@@ -319,12 +194,8 @@ def get_scamper_packet_by_file(sfile):
 	scamper_dic['link_set']=set()
 	scamper_dic['node_set']=set()
 	scamper_dic['router_set']=set()
-	link_set=set()
-	node_set=set()
-	all_packet=0
-	all_time=0
-	dst_set=set()
-	all_ip=0
+	stop_time=0
+	start_time=0
 	# for file in list_dir:
 	fr=open(sfile,'r')
 	# print file
@@ -334,7 +205,6 @@ def get_scamper_packet_by_file(sfile):
 		if not line:
 			break
 		else:
-			all_ip+=1
 			jo=json.loads(line)
 			if jo.has_key('start_time'):
 				start_time=int(jo['start_time'])
@@ -348,6 +218,8 @@ def get_scamper_packet_by_file(sfile):
 				scamper_dic['ALL_SEND_PACKET']+=int(jo['probe_count'])
 			dst=jo['dst']
 			src=jo['src']
+			dst=str(dst)
+			# print "scamper",type(dst),dst
 			scamper_dic['info'][dst]={}
 			scamper_dic['info'][dst]['hop']={}
 			scamper_dic['info'][dst]['maxhop']=0
@@ -358,7 +230,7 @@ def get_scamper_packet_by_file(sfile):
 				if len_hops<=0:
 					continue
 				if int(hops[0]['probe_ttl'])==1:
-					s=dst
+					s=src
 					d=hops[0]['addr']
 					ip_s=socket.ntohl(struct.unpack("I",socket.inet_aton(s))[0])
 					ip_d=socket.ntohl(struct.unpack("I",socket.inet_aton(d))[0])
@@ -367,10 +239,10 @@ def get_scamper_packet_by_file(sfile):
 					else:
 						str_ip=s+" "+d
 					scamper_dic['link_set'].add(str_ip)
-					strace_all_link.add(str_ip)
+					# strace_all_link.add(str_ip)
 				for i in range(0,len_hops-1):
 					#节点
-					strace_all_node.add(hops[i]['addr'])
+					# strace_all_node.add(hops[i]['addr'])
 					scamper_dic['node_set'].add(hops[i]['addr'])
 					#路由器
 					scamper_dic['router_set'].add(hops[i]['addr'])
@@ -391,10 +263,10 @@ def get_scamper_packet_by_file(sfile):
 						else:
 							str_ip=s+" "+d
 						scamper_dic['link_set'].add(str_ip)
-						strace_all_link.add(str_ip)
+						# strace_all_link.add(str_ip)
 					#endif
 				#记录最后一个节点
-				strace_all_node.add(hops[len_hops-1]['addr'])
+				# strace_all_node.add(hops[len_hops-1]['addr'])
 				scamper_dic['node_set'].add(hops[len_hops-1]['addr'])
 				#记录最后一跳
 				index_hop=int(hops[len_hops-1]['probe_ttl'])
@@ -409,12 +281,13 @@ def get_scamper_packet_by_file(sfile):
 	# for dst in dst_set:
 	# 	if dst in node_set:
 	# 		node_set.remove(dst)
-
+	strace_all_node=strace_all_node.union(scamper_dic['node_set'])
+	strace_all_link=strace_all_link.union(scamper_dic['link_set'])
+	strace_all_router=strace_all_router.union(scamper_dic['link_set'])
 	scamper_dic['src']=src
 	scamper_dic['ALL_NODE']=len(scamper_dic['node_set'])	
 	scamper_dic['ALL_LINK']=len(scamper_dic['link_set'])	
 	scamper_dic['MID_ROUTER_COUNT']=len(scamper_dic['router_set'])
-	print "scamper"
 	print "fastrace"
 	print "src",scamper_dic['src']
 	print "ALL_TARGET",scamper_dic['ALL_TARGET']
@@ -428,34 +301,24 @@ def get_scamper_packet_by_file(sfile):
 	# print "RUNTIME",fastrace_dic['RUNTIME']
 	if scamper_dic['RUNTIME']!=0:
 		print "avg send packet",1.0*scamper_dic['ALL_SEND_PACKET']/scamper_dic['RUNTIME']
-	all_scamper_send+=all_packet
-
+	all_scamper_send+=scamper_dic['ALL_SEND_PACKET']
+	scamper_all_target+=scamper_dic['ALL_TARGET']
 	return scamper_dic
 # def every_packet_rate(ffile,sfile):
 # 	fastrace_dic=get_fastrace_packet_by_file(ffile)
 # 	sr=get_scamper_packet_by_file(sfile)
 
-def every_cmp_correct(ffile,sfile):
+def every_cmp_correct(fastrace_dic,scamper_dic):
 	both_have_all_hop=0
 	both_have_same_hop=0
 	fastrace_no_hop=0
 	because_of_bnp=0
-	fastrace_dic=get_fastrace_packet_by_file(ffile)
-	if fastrace_dic['broken']!=1:
-		scamper_dic=get_scamper_packet_by_file(sfile)
-	else:
-		return 0
-	if scamper_dic['ALL_LINK']!=0:
-		print "link rate(f/s)",fastrace_dic['ALL_LINK']*1.0/scamper_dic['ALL_LINK']
-	if  scamper_dic['ALL_NODE']!=0:
-		print "node rate(f/s)",fastrace_dic['ALL_NODE']*1.0/scamper_dic['ALL_NODE']
-	if scamper_dic['ALL_SEND_PACKET']!=0:
-		print "packet rate(f/s)",fastrace_dic['ALL_SEND_PACKET']*1.0/scamper_dic['ALL_SEND_PACKET']
+	# fastrace_dic=get_fastrace_packet_by_file(ffile)
+	# if fastrace_dic['broken']!=1:
+	# 	scamper_dic=get_scamper_packet_by_file(sfile)
+	# else:
+	# 	return 0
 
-
-	if fastrace_dic['ALL_TARGET'] != scamper_dic['ALL_TARGET']:
-		print fastrace_dic['file'],fastrace_dic['ALL_TARGET'],scamper_dic['ALL_TARGET'],"ip count not same"
-		return 0
 	for dst in scamper_dic['info']:
 		trace=scamper_dic['info'][dst]
 		hops=trace['hop']
@@ -472,12 +335,17 @@ def every_cmp_correct(ffile,sfile):
 						pass
 						# print dst,"fastrace not in scamper on ttl",i,fastrace_dic[dst]['hop'][i],hops[i]
 						# return 0
+					pass
 				else:
 					fastrace_no_hop+=1
 					# print dst,"fastrace_dic not reply at ttl",i
 			except Exception as e:
-				# print "fastrace incomplete",e
-				break
+				print "fastrace not has dst key",e
+				# for dst in fastrace_dic['info']:
+				# 	print "fastrace why",dst
+				# for dst in scamper_dic['info']:
+				# 	print "scamper_dic why",dst
+				# exit(0)
 	diff_hop=both_have_all_hop - both_have_same_hop
 	because_of_bnp_rate=0
 	both_have_same_hop_rate=0
@@ -502,8 +370,9 @@ def every_cmp_correct(ffile,sfile):
 	return r 
 
 def cmp_correct150():
-	global bnp_sum,all_dst_sum,all_dst_packet,all_dst_rebund
-	global ftrace_all_node,ftrace_all_link,strace_all_node,strace_all_link
+	global bnp_sum,fastrace_all_target,all_fastrace_send,all_fastrace_rebund
+	global ftrace_all_link,ftrace_all_node,ftrace_all_router
+	global strace_all_node,strace_all_link,strace_all_router
 	sroot=sys.argv[2]
 	froot=sys.argv[1]
 	x=[]
@@ -518,7 +387,7 @@ def cmp_correct150():
 		for dirname in dirnames:
 			# print dirname
 			# print dirpath
-			ffile=dirpath+dirname+"/test-fastrace4.fastrace"
+			ffile=dirpath+dirname+"/test-fastrace"+sys.argv[4]+".fastrace"
 			if os.path.exists(ffile):
 				# print sfile
 				sfile=sroot+dirname+"/test-fastrace-scamper.json"
@@ -527,26 +396,40 @@ def cmp_correct150():
 					print sfile
 					print ffile
 					# every_packet_rate(ffile,sfile)
-					r=every_cmp_correct(ffile,sfile)
-					if r!=0 and r[1]  > 0.01:
-						i+=1
-						x.append(i)
-						thoery_y.append(r[1])
-						both_y.append(r[2])
-						bnp_y.append(r[3])
+					fastrace_dic=get_fastrace_packet_by_file(ffile)
+					if fastrace_dic['broken']!=1:
+						scamper_dic=get_scamper_packet_by_file(sfile)
+						if scamper_dic['ALL_LINK']!=0:
+							print "link rate(f/s)",fastrace_dic['ALL_LINK']*1.0/scamper_dic['ALL_LINK']
+						if  scamper_dic['ALL_NODE']!=0:
+							print "node rate(f/s)",fastrace_dic['ALL_NODE']*1.0/scamper_dic['ALL_NODE']
+						if scamper_dic['ALL_SEND_PACKET']!=0:
+							print "packet rate(f/s)",fastrace_dic['ALL_SEND_PACKET']*1.0/scamper_dic['ALL_SEND_PACKET']
 
+						if fastrace_dic['ALL_TARGET'] != scamper_dic['ALL_TARGET']:
+							print fastrace_dic['file'],fastrace_dic['ALL_TARGET'],scamper_dic['ALL_TARGET'],"ip count not same"
+							continue
+						# r=every_cmp_correct(fastrace_dic,scamper_dic)
+						# if r!=0 and r[1]  > 0.01:
+						# 	i+=1
+						# 	x.append(i)
+						# 	thoery_y.append(r[1])
+						# 	both_y.append(r[2])
+						# 	bnp_y.append(r[3])
 			else:
 				pass
-				print "ftrace data no exist",dirname
+				print "150 ftrace data no exist",dirname
 
 	print "150 bnp_sum",bnp_sum
-	print "150 all_dst_sum",all_dst_sum,bnp_sum*1.0/all_dst_sum
-
-	print "150 fastrace all dst_packet",all_dst_packet
-	print "150 fastrace all dst_rebund",all_dst_rebund,all_dst_packet+all_dst_rebund,all_dst_rebund*1.0/(all_dst_packet+all_dst_rebund)
-	print "150 scamper all packet,f/s",all_scamper_send, all_dst_packet*1.0/all_scamper_send
-	print "150 ftrace_all_node,ftrace_all_link,strace_all_node,strace_all_link"
-	print len(ftrace_all_node),len(ftrace_all_link),len(strace_all_node),len(strace_all_link)
+	print "150 fastrace_all_target",fastrace_all_target,bnp_sum*1.0/fastrace_all_target
+	print "150 scamper_all_target",scamper_all_target
+	print "150 fastrace all dst_packet",all_fastrace_send
+	print "150 fastrace all dst_rebund",all_fastrace_rebund,all_fastrace_send+all_fastrace_rebund,all_fastrace_rebund*1.0/(all_fastrace_send+all_fastrace_rebund)
+	print "150 scamper all packet,f/s",all_scamper_send, all_fastrace_send*1.0/all_scamper_send
+	print "150 ftrace_all_node,ftrace_all_link,ftrace_all_router,strace_all_node,strace_all_link,strace_all_router"
+	print len(ftrace_all_node),len(ftrace_all_link),len(ftrace_all_router),len(strace_all_node),len(strace_all_link),len(strace_all_router)
+	print "150 node,link,router(f/s)"
+	print len(ftrace_all_node)*1.0/len(strace_all_node),len(ftrace_all_link)*1.0/len(strace_all_link),len(ftrace_all_router)*1.0/len(strace_all_router)
 	only_strace_ip=strace_all_node.difference(ftrace_all_node)
 	only_ftrace_ip=ftrace_all_node.difference(strace_all_node)
 	print "only_strace_ip,only_ftrace_ip"
@@ -560,9 +443,41 @@ def cmp_correct150():
 	# 	fw.write(ip+"\n")
 	# fw.close()
 	# draw(x,thoery_y,both_y,bnp_y)
+	
+
+if __name__ == '__main__':
+	global bnp_sum,fastrace_all_target,scamper_all_target
+	global all_fastrace_send,all_fastrace_rebund,all_scamper_send
+	global ftrace_all_link,ftrace_all_node,ftrace_all_router
+	global strace_all_node,strace_all_link,strace_all_router
+	ftrace_all_node=set()
+	ftrace_all_link=set()
+	ftrace_all_router=set()
+	strace_all_router=set()
+	strace_all_node=set()
+	strace_all_link=set()
+
+	bnp_sum=0
+	fastrace_all_target=0
+	scamper_all_target=0
+	all_fastrace_send=0
+	all_fastrace_rebund=0
+	all_scamper_send=0
+
+	if sys.argv[3] == "m":
+		mutil_cmp_correct()
+	elif sys.argv[3] == "n":
+		cmp_correct_single()
+		# every_cmp_correct('test-fastrace2/JP0108/test-fastrace2.fastrace','test-fastrace-scamper/JP0108/test-fastrace-scamper.json')
+	elif sys.argv[3]== "s":
+		cmp_ftrace_self_correct()
+	elif sys.argv[3]=="f":
+		get_fastrace_packet_by_file(sys.argv[1])
+	else:
+		pass
+		cmp_correct150()
+		# runpath()
 def runpath():
-	global bnp_sum,all_dst_sum,all_dst_packet,all_dst_rebund
-	global ftrace_all_node,ftrace_all_link,strace_all_node,strace_all_link
 	froot=sys.argv[1]
 	x=[]
 	thoery_y=[]
@@ -587,32 +502,4 @@ def runpath():
 			if os.path.exists(sfile):
 				print sfile
 				# get_fastrace_packet_by_file(ffile)
-				get_scamper_packet_by_file(sfile)		
-
-if __name__ == '__main__':
-	global bnp_sum,all_dst_sum,all_dst_packet,all_dst_rebund,all_scamper_send
-	global ftrace_all_node,ftrace_all_link,strace_all_node,strace_all_link
-	ftrace_all_node=set()
-	ftrace_all_link=set()
-	strace_all_node=set()
-	strace_all_link=set()
-
-	bnp_sum=0
-	all_dst_sum=0
-	all_dst_packet=0
-	all_dst_rebund=0
-	all_scamper_send=0
-
-	if sys.argv[3] == "m":
-		mutil_cmp_correct()
-	elif sys.argv[3] == "n":
-		cmp_correct_single()
-		# every_cmp_correct('test-fastrace2/JP0108/test-fastrace2.fastrace','test-fastrace-scamper/JP0108/test-fastrace-scamper.json')
-	elif sys.argv[3]== "s":
-		cmp_ftrace_self_correct()
-	elif sys.argv[3]=="f":
-		get_fastrace_packet_by_file(sys.argv[1])
-	else:
-		pass
-		cmp_correct150()
-		# runpath()
+				get_scamper_packet_by_file(sfile)	
