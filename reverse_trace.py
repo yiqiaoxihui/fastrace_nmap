@@ -13,80 +13,6 @@ import socket
 import json
 # import networkx as nx
 # import matplotlib.pyplot as plt
-def get_node_link():
-	fr=open(sys.argv[1],'r')
-	pline=""
-	line=""
-	reply_dst_set=set()
-	mid_is_dst_set=set()
-	mid_router_set=set()
-	mid_count=0
-	link_set=set()
-	node_set=set()
-	dst_set=set()
-	line=fr.readline()
-	dst_link_count=0
-	if not line:
-		print("file in empty")
-		return
-	while True:
-		pline=line
-		line=fr.readline()
-		if not line:
-			break
-		if "Target" in pline:
-			dst= pline.split()[1]
-			dst_set.add(dst)
-			src=pline.split()[7]
-			if line[0] == '~':
-				link_set.add(src+" "+line.split()[2])
-		if pline[0] == '~':
-			node_set.add(pline.split()[2])
-			if pline.split()[2]!=dst:
-				mid_router_set.add(pline.split()[2])
-		if line[0] == '~':
-			node_set.add(line.split()[2])
-			if line.split()[2]!=dst:
-				mid_router_set.add(line.split()[2])
-		if "Got there" in line:
-			reply_dst_set.add(line.split()[1])
-		if pline[0] == '~' and line[0] == '~':
-			s=pline.split()[2]
-			d=line.split()[2]
-			ip_s=socket.ntohl(struct.unpack("I",socket.inet_aton(s))[0])
-			ip_d=socket.ntohl(struct.unpack("I",socket.inet_aton(d))[0])
-			if ip_s ==0 or ip_d == 0:
-				continue
-			if ip_s>ip_d:
-				str_ip=d+" "+s
-			else:
-				str_ip=s+" "+d
-			link_set.add(str_ip)
-			if d==dst:
-				dst_link_count+=1
-	#delete dst from all node
-	# for dst in dst_set:
-	# 	if dst in node_set:
-	# 		node_set.remove(dst)
-
-	if sys.argv[2] == "1":
-		fw=open(sys.argv[1]+".link",'w')
-		for item in link_set:
-			fw.write(item+"\n")
-		fw.close()
-
-		fw=open(sys.argv[1]+".node",'w')
-		for item in node_set:
-			fw.write(item+"\n")
-		fw.close()
-	# mid_count=len(node_set)-reply_count
-	print "Target",len(dst_set)
-	print "all link",len(link_set),"all node",len(node_set)
-	print "dst link",dst_link_count
-	print "reply dst count ",len(reply_dst_set)
-	print "mid router count",len(mid_router_set)
-	# print "the dst also is mid route:",len(reply_dst_set)+len(mid_router_set)-len(node_set)
-	print "rely dst/all dst",len(reply_dst_set)*1.0/len(dst_set)
 def get_fastrace_packet_by_file():
 	ffile=sys.argv[1]
 	fastrace_dic={}
@@ -193,9 +119,10 @@ def get_fastrace_packet_by_file():
 					#先读目标，后读跳,获取每一跳
 					fastrace_dic['all_hop']+=1
 
-					index_hop=int(line.split()[1])	
-					fastrace_dic['info'][dst]['hop'][index_hop]=node
-					fastrace_dic['info'][dst]['maxhop']=index_hop
+					index_hop=int(line.split()[1])
+					if line.split()[2]!='0':
+						fastrace_dic['info'][dst]['hop'][index_hop]=node
+						fastrace_dic['info'][dst]['maxhop']=index_hop
 			if pline[0] == '~' and line[0] == '~':
 				s=pline.split()[2]
 				d=line.split()[2]
@@ -251,26 +178,7 @@ def get_fastrace_packet_by_file():
 	fastrace_dic['BNP_AVG']		=fastrace_dic['BNP_AVG']*1.0/fastrace_dic['ALL_TARGET']
 	print "MAX_HOP_AVG",fastrace_dic['MAX_HOP_AVG']
 	print "BNP_AVG",fastrace_dic['BNP_AVG'],(fastrace_dic['BNP_AVG']-1)*1.0/fastrace_dic['MAX_HOP_AVG']
-	if sys.argv[2] == "1":
-		fw=open(sys.argv[1]+".link",'w')
-		for item in fastrace_dic['link_set']:
-			fw.write(item+"\n")
-		fw.close()
 
-		fw=open(sys.argv[1]+".node",'w')
-		for item in fastrace_dic['node_set']:
-			fw.write(item+"\n")
-		fw.close()
-	if sys.argv[2] == "2":
-		fw=open(sys.argv[1]+".csv",'w')
-		for item in fastrace_dic['link_set']:
-			fw.write(item.split()[0]+','+item.split()[1]+"\n")
-		fw.close()
-
-		fw=open(sys.argv[1]+".node",'w')
-		for item in fastrace_dic['node_set']:
-			fw.write(item+"\n")
-		fw.close()
 	return fastrace_dic
 def draw(edge_set,node_set):
 	G = nx.Graph()
@@ -282,25 +190,17 @@ def draw(edge_set,node_set):
 	plt.draw()
 if __name__ == '__main__':
 	# get_node_link()
-	get_fastrace_packet_by_file()
+	fastrace_dic=get_fastrace_packet_by_file()
+	fw=open(sys.argv[2],'w')
+	for dst in fastrace_dic['info']:
+		hops=fastrace_dic['info'][dst]['hop']
+		fw.write('traceroute from aaa to '+fastrace_dic['src']+"\n")
+		fw.write('#0|'+fastrace_dic['src']+"\n")
+		maxhop=fastrace_dic['info'][dst]['maxhop']
+		for i in range(maxhop,0,-1):
+			if hops.has_key(i):
+				fw.write('#'+str(maxhop-i+1)+"|"+hops[i]+"\n")
+		fw.write('#'+str(maxhop+1)+"|"+fastrace_dic['src']+"\n")
+	fw.close()
+		
 
-
-def run_all_vps_data():
-	for dirpath, dirnames, filenames in os.walk(sys.argv[1]):
-		# for filepath in filenames:
-		#     print os.path.join(dirpath, filepath)
-		for dirname in dirnames:
-			# print dirname
-			# print dirpath
-			ffile=dirpath+dirname+"/test-fastrace"+sys.argv[2]+".fastrace"
-			f_ip_file=dirpath+dirname+"/test-fastrace"+sys.argv[2]+".ip_list"
-			if os.path.exists(ffile):
-				print "--------------------"
-				print ffile
-				fastrace_dic=get_fastrace_packet(ffile)
-				if fastrace_dic['src']==0:
-					continue
-				fw=open("csv-fastrace4/"+fastrace_dic['src']+dirname+".csv",'w')
-				for item in fastrace_dic['link_set']:
-					fw.write(item.split()[0]+','+item.split()[1]+"\n")
-				fw.close()

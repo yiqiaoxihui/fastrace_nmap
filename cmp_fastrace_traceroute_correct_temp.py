@@ -11,7 +11,7 @@ import struct
 import socket
 import json
 import matplotlib.pyplot as plt 
-
+import networkx as nx
 global bnp_sum,fastrace_all_target,all_fastrace_send,all_fastrace_rebund
 
 def get_fastrace_packet_by_file(ffile):
@@ -28,6 +28,7 @@ def get_fastrace_packet_by_file(ffile):
 	fastrace_dic['TARGET_ARRIVE']=0
 	fastrace_dic['HOPPING_SEND']=0
 	fastrace_dic['BNP_REDUNDANCE_COUNT']=0
+	fastrace_dic['BNP_REDUNDANCE_RATE']=0.0
 	fastrace_dic['BNP_COUNT']=0
 	fastrace_dic['NNS_COUNT']=0
 	fastrace_dic['RUNTIME']=0
@@ -40,6 +41,9 @@ def get_fastrace_packet_by_file(ffile):
 	fastrace_dic['link_set']=set()
 	fastrace_dic['node_set']=set()
 	fastrace_dic['router_set']=set()
+	fastrace_dic['DEGREE_ONE']=0.0
+	fastrace_dic['DEGREE_BIG']=0.0
+	fastrace_dic['DEGREE']=0.0
 	#每个目标统计信息：bnp=1,hop={},
 	fr=open(ffile,'r')
 	lines=fr.readlines()
@@ -150,7 +154,7 @@ def get_fastrace_packet_by_file(ffile):
 
 	fastrace_dic['src']=src
 	fastrace_dic['MID_ROUTER_COUNT']=len(fastrace_dic['router_set'])
-	print "fastrace"
+	print ">fastrace"
 	print "src",fastrace_dic['src']
 	print "broken",fastrace_dic['broken']
 	print "BNP_COUNT",fastrace_dic['BNP_COUNT']
@@ -163,6 +167,7 @@ def get_fastrace_packet_by_file(ffile):
 	print "link_set",len(fastrace_dic['link_set'])
 	print "node_set",len(fastrace_dic['node_set'])
 	print "router_set",len(fastrace_dic['router_set'])
+	print "router/link",len(fastrace_dic['router_set'])*1.0/len(fastrace_dic['node_set'])
 	print "TARGET_ARRIVE",fastrace_dic['TARGET_ARRIVE']
 	print "BNP_REDUNDANCE_COUNT",fastrace_dic['BNP_REDUNDANCE_COUNT']
 	print "BNP_COUNT",fastrace_dic['BNP_COUNT']
@@ -170,14 +175,26 @@ def get_fastrace_packet_by_file(ffile):
 	print "all_hop",fastrace_dic['all_hop']
 	print "RUNTIME",fastrace_dic['RUNTIME']
 	if fastrace_dic['ALL_SEND_PACKET']>0:
-		print "rebundary rate:",fastrace_dic['BNP_REDUNDANCE_COUNT']*1.0/fastrace_dic['ALL_SEND_PACKET']
+		fastrace_dic['BNP_REDUNDANCE_RATE']=fastrace_dic['BNP_REDUNDANCE_COUNT']*1.0/(fastrace_dic['ALL_SEND_PACKET']+fastrace_dic['BNP_REDUNDANCE_COUNT'])
+		print "rebundary rate:",fastrace_dic['BNP_REDUNDANCE_RATE']
 	for dst in fastrace_dic['info']:
 		fastrace_dic['MAX_HOP_AVG']+=fastrace_dic['info'][dst]['maxhop']
 		fastrace_dic['BNP_AVG']+=fastrace_dic['info'][dst]['bnp']
 	fastrace_dic['MAX_HOP_AVG']	=fastrace_dic['MAX_HOP_AVG']*1.0/fastrace_dic['ALL_TARGET']
 	fastrace_dic['BNP_AVG']		=fastrace_dic['BNP_AVG']*1.0/fastrace_dic['ALL_TARGET']
 	print "MAX_HOP_AVG",fastrace_dic['MAX_HOP_AVG']
-	print "BNP_AVG",fastrace_dic['BNP_AVG']
+	print "BNP_AVG",fastrace_dic['BNP_AVG'],(fastrace_dic['BNP_AVG']-1)*1.0/fastrace_dic['MAX_HOP_AVG']
+
+	fastrace_dic['DEGREE'],fastrace_dic['DEGREE_ONE'],fastrace_dic['DEGREE_BIG'],fastrace_dic['DEGREE_NODE'],fastrace_dic['MAX_DEGREE']=get_degree(fastrace_dic['link_set'],fastrace_dic['node_set'])
+	print "DEGREE",fastrace_dic['DEGREE']
+	print "DEGREE_ONE",fastrace_dic['DEGREE_ONE']
+	print "MAX_DEGREE",fastrace_dic['MAX_DEGREE']
+	print "DEGREE_BIG",fastrace_dic['DEGREE_BIG']	#统计节点度大于10的个数
+	print "DEGREE_NODE",fastrace_dic['DEGREE_NODE']
+	if fastrace_dic['DEGREE_NODE']>0:
+		print "1d num/all num,b/a",fastrace_dic['DEGREE_ONE']*1.0/fastrace_dic['DEGREE_NODE'],
+		print fastrace_dic['DEGREE_BIG']*1.0/fastrace_dic['DEGREE_NODE']
+
 	return fastrace_dic
 def get_scamper_packet_by_file(sfile):
 	hops={}
@@ -202,6 +219,10 @@ def get_scamper_packet_by_file(sfile):
 	scamper_dic['node_set']=set()
 	scamper_dic['router_set']=set()
 	scamper_dic['broken']=0
+	scamper_dic['DEGREE_ONE']=0.0
+	scamper_dic['DEGREE_BIG']=0.0
+	scamper_dic['DEGREE']=0.0
+	scamper_dic['MAX_DEGREE']=0.0
 	stop_time=0
 	start_time=0
 	# for file in list_dir:
@@ -298,23 +319,33 @@ def get_scamper_packet_by_file(sfile):
 	scamper_dic['ALL_NODE']=len(scamper_dic['node_set'])	
 	scamper_dic['ALL_LINK']=len(scamper_dic['link_set'])	
 	scamper_dic['MID_ROUTER_COUNT']=len(scamper_dic['router_set'])
-	print "fastrace"
+	print "\n>scamper"
 	print "src",scamper_dic['src']
 	print "ALL_TARGET",scamper_dic['ALL_TARGET']
 	print "ALL_SEND_PACKET",scamper_dic['ALL_SEND_PACKET']
 	print "link_set",len(scamper_dic['link_set'])
 	print "node_set",len(scamper_dic['node_set'])
+	print "router/link",len(scamper_dic['router_set'])*1.0/len(scamper_dic['node_set'])
 	print "router_set",len(scamper_dic['router_set'])
 	print "TARGET_ARRIVE",scamper_dic['TARGET_ARRIVE']
 	print "all_hop",scamper_dic['all_hop']
 	print "RUNTIME",scamper_dic['RUNTIME']
-	# print "RUNTIME",fastrace_dic['RUNTIME']
+	# print "RUNTIME",scamper_dic['RUNTIME']
 	if scamper_dic['RUNTIME']!=0:
 		print "avg send packet",1.0*scamper_dic['ALL_SEND_PACKET']/scamper_dic['RUNTIME']
 
+	scamper_dic['DEGREE'],scamper_dic['DEGREE_ONE'],scamper_dic['DEGREE_BIG'],scamper_dic['DEGREE_NODE'],scamper_dic['MAX_DEGREE']=get_degree(scamper_dic['link_set'],scamper_dic['node_set'])
+	print "DEGREE",scamper_dic['DEGREE']
+	print "DEGREE_ONE",scamper_dic['DEGREE_ONE']
+	print "MAX_DEGREE",scamper_dic['MAX_DEGREE']
+	print "DEGREE_BIG",scamper_dic['DEGREE_BIG']	#统计节点度大于10的个数
+	print "DEGREE_NODE",scamper_dic['DEGREE_NODE']
+	if scamper_dic['DEGREE_NODE']>0:
+		print "1d num/all num,b/a",scamper_dic['DEGREE_ONE']*1.0/scamper_dic['DEGREE_NODE'],
+		print scamper_dic['DEGREE_BIG']*1.0/scamper_dic['DEGREE_NODE']
 	return scamper_dic
 # def every_packet_rate(ffile,sfile):
-# 	fastrace_dic=get_fastrace_packet_by_file(ffile)
+# 	scamper_dic=get_fastrace_packet_by_file(ffile)
 # 	sr=get_scamper_packet_by_file(sfile)
 
 def every_cmp_correct(fastrace_dic,scamper_dic):
@@ -372,8 +403,8 @@ def every_cmp_correct(fastrace_dic,scamper_dic):
 	thoery_both_have_rate=(1- both_have_same_hop_rate )*because_of_bnp_rate + both_have_same_hop_rate
 	print "thoery_both_have_rate",thoery_both_have_rate
 	r={} 		#记录一致率数据
-	r[1]=thoery_both_have_rate
-	r[2]=both_have_same_hop_rate
+	r[1]=thoery_both_have_rate  
+	r[2]=both_have_same_hop_rate   
 	r[3]=(1- both_have_same_hop_rate )*because_of_bnp_rate
 	r[4]=both_have_all_hop
 	return r 
@@ -393,18 +424,25 @@ def cmp_correct150():
 	i=1
 	data_number=0
 	useful_data=0
+	max_rebund_rate=0
+	min_rebund_rate=1
+	max_degree=0
+	min_degree=1
+	avg_degree=0
+	max_avg_hop_dic={}
+	
 	for dirpath, dirnames, filenames in os.walk(froot):
 		# for filepath in filenames:
 		#     print os.path.join(dirpath, filepath)
 		for dirname in dirnames:
 			# print dirname
 			# print dirpath
-			ffile=dirpath+dirname+"/test-fastrace"+sys.argv[4]+".fastrace"
-			f_ip_file=dirpath+dirname+"/test-fastrace"+sys.argv[4]+".ip_list"
+			ffile=dirpath+dirname+"/test-fastrace"+sys.argv[3]+".fastrace"
+			f_ip_file=dirpath+dirname+"/test-fastrace"+sys.argv[3]+".ip_list"
 			if os.path.exists(ffile):
 				# print sfile
-				sfile=sroot+dirname+"/test-fastrace-scamper.json"
-				s_ip_file=sroot+dirname+"/test-fastrace-scamper.ip_list"
+				sfile=sroot+dirname+"/test-fastrace-scamper2.udp.json"
+				s_ip_file=sroot+dirname+"/test-fastrace-scamper2.ip_list"
 				if os.path.exists(sfile):
 					print "----------------------"
 					print sfile
@@ -421,6 +459,7 @@ def cmp_correct150():
 					# every_packet_rate(ffile,sfile)
 					fastrace_dic=get_fastrace_packet_by_file(ffile)
 					if fastrace_dic['broken']!=1:
+
 						scamper_dic=get_scamper_packet_by_file(sfile)
 						if scamper_dic['ALL_TARGET']!=fastrace_dic['ALL_TARGET']:
 							print ">>>>>>>>>>>>>>>>>>",scamper_dic['ALL_TARGET'],fastrace_dic['ALL_TARGET']
@@ -429,7 +468,7 @@ def cmp_correct150():
 						data_number+=1
 						ftrace_all_link=ftrace_all_link.union(fastrace_dic['link_set'])
 						ftrace_all_node=ftrace_all_node.union(fastrace_dic['node_set'])
-						ftrace_all_router=ftrace_all_router.union(fastrace_dic['node_set'])
+						ftrace_all_router=ftrace_all_router.union(fastrace_dic['router_set'])
 						fastrace_all_target+=fastrace_dic['ALL_TARGET']
 						all_fastrace_send+=fastrace_dic['ALL_SEND_PACKET']
 						all_fastrace_rebund+=fastrace_dic['BNP_REDUNDANCE_COUNT']
@@ -437,25 +476,43 @@ def cmp_correct150():
 						all_fastrace_max_hop_avg_len+=fastrace_dic["MAX_HOP_AVG"]
 						all_bnp_avg_len+=fastrace_dic['BNP_AVG']
 						bnp_avg_in_max_hop+=(fastrace_dic['BNP_AVG']-1)*1.0/fastrace_dic['MAX_HOP_AVG']
+						max_avg_hop_dic[data_number]={}
+						max_avg_hop_dic[data_number]['MAX_HOP_AVG']=fastrace_dic['MAX_HOP_AVG']
+						max_avg_hop_dic[data_number]['BNP_AVG']=fastrace_dic['BNP_AVG']
 
-
+						if fastrace_dic['BNP_REDUNDANCE_RATE'] > max_rebund_rate:
+							max_rebund_rate=fastrace_dic['BNP_REDUNDANCE_RATE']
+						if fastrace_dic['BNP_REDUNDANCE_RATE'] < min_rebund_rate:
+							min_rebund_rate=fastrace_dic['BNP_REDUNDANCE_RATE']
+						
+						if fastrace_dic['DEGREE'] > max_degree:
+							max_degree=fastrace_dic['DEGREE']
+						if fastrace_dic['DEGREE'] < min_degree:
+							min_degree=fastrace_dic['DEGREE']
+						# fastrace_dic['DEGREE_NODE']
+						avg_degree+=fastrace_dic['DEGREE']
 						all_scamper_send+=scamper_dic['ALL_SEND_PACKET']
 						scamper_all_target+=scamper_dic['ALL_TARGET']
+
 						strace_all_node=strace_all_node.union(scamper_dic['node_set'])
 						strace_all_link=strace_all_link.union(scamper_dic['link_set'])
-						strace_all_router=strace_all_router.union(scamper_dic['link_set'])
+						strace_all_router=strace_all_router.union(scamper_dic['router_set'])
 
 						if scamper_dic['ALL_LINK']!=0:
-							print "link rate(f/s)",fastrace_dic['ALL_LINK']*1.0/scamper_dic['ALL_LINK']
+							print "link rate(f/s)",len(fastrace_dic['link_set'])*1.0/scamper_dic['ALL_LINK']
+							print "link only f,only s",len(fastrace_dic['link_set'].difference(scamper_dic['link_set'])),len(scamper_dic['link_set'].difference(fastrace_dic['link_set']))
 						if  scamper_dic['ALL_NODE']!=0:
-							print "node rate(f/s)",fastrace_dic['ALL_NODE']*1.0/scamper_dic['ALL_NODE']
+							print "node rate(f/s)",len(fastrace_dic['node_set'])*1.0/scamper_dic['ALL_NODE']
+							print "node only f,only s",len(fastrace_dic['node_set'].difference(scamper_dic['node_set'])),len(scamper_dic['node_set'].difference(fastrace_dic['node_set']))
+						if  scamper_dic['MID_ROUTER_COUNT']!=0:
+							print "router rate(f/s)",fastrace_dic['MID_ROUTER_COUNT']*1.0/scamper_dic['MID_ROUTER_COUNT']
 						if scamper_dic['ALL_SEND_PACKET']!=0:
 							print "packet rate(f/s)",fastrace_dic['ALL_SEND_PACKET']*1.0/scamper_dic['ALL_SEND_PACKET']
 
 						if fastrace_dic['ALL_TARGET'] != scamper_dic['ALL_TARGET']:
 							print fastrace_dic['file'],fastrace_dic['ALL_TARGET'],scamper_dic['ALL_TARGET'],"ip count not same"
 							continue
-						r=every_cmp_correct(fastrace_dic,scamper_dic)
+						# r=every_cmp_correct(fastrace_dic,scamper_dic)
 						# if r!=0 and r[1]  > 0.01:
 						# 	i+=1
 						# 	x.append(i)
@@ -469,27 +526,58 @@ def cmp_correct150():
 		all_fastrace_max_hop_avg_len=all_fastrace_max_hop_avg_len/data_number
 		all_bnp_avg_len=all_bnp_avg_len/data_number
 		bnp_avg_in_max_hop=bnp_avg_in_max_hop/data_number
+		avg_degree=avg_degree*1.0/data_number
 	except Exception as e:
 		print "error:",e
 
-	print ">150 fastrace_all_target",fastrace_all_target,bnp_sum*1.0/fastrace_all_target
-	print "150 bnp_sum",bnp_sum
+	print ">150 fastrace_all_target",fastrace_all_target
+	print "150 bnp_sum,bnp/all",bnp_sum,bnp_sum*1.0/fastrace_all_target
+	print "150 fastrace node",len(ftrace_all_node)
+	print "150 fastrace link",len(ftrace_all_link)
+	print "150 fastrace router",len(ftrace_all_router)
+	print "150 fastrace router/node",len(ftrace_all_router)*1.0/len(ftrace_all_node)
+
 	print "150 fastrace all dst_packet",all_fastrace_send
-	print "150 fastrace all dst_rebund",all_fastrace_rebund,all_fastrace_send+all_fastrace_rebund,all_fastrace_rebund*1.0/(all_fastrace_send+all_fastrace_rebund)
+	print "150 fastrace all dst_rebund",all_fastrace_rebund,
+	print all_fastrace_send+all_fastrace_rebund,
+	print all_fastrace_rebund*1.0/(all_fastrace_send+all_fastrace_rebund)
+	print "150 max_rebund_rate",max_rebund_rate
+	print "150 min_rebund_rate",min_rebund_rate
+	print "150 fastrace max_degree",max_degree
+	print "150 fastrace min_degree",min_degree
+	print "150 fastrace avg_degree",avg_degree
 	print "150 all_fastrace_max_hop_avg_len",all_fastrace_max_hop_avg_len
 	print "150 all_bnp_avg_len",all_bnp_avg_len
 	print "150 bnp_avg_in_max_hop",bnp_avg_in_max_hop
 
-	print ">150 scamper_all_target",scamper_all_target
+	print "\n>150 scamper_all_target",scamper_all_target
 	print "150 scamper all packet,f/s",all_scamper_send, all_fastrace_send*1.0/all_scamper_send
-	print "150 ftrace_all_node,ftrace_all_link,ftrace_all_router,strace_all_node,strace_all_link,strace_all_router"
-	print len(ftrace_all_node),len(ftrace_all_link),len(ftrace_all_router),len(strace_all_node),len(strace_all_link),len(strace_all_router)
-	print "150 node,link,router(f/s)"
-	print len(ftrace_all_node)*1.0/len(strace_all_node),len(ftrace_all_link)*1.0/len(strace_all_link),len(ftrace_all_router)*1.0/len(strace_all_router)
+	print "150 scamper node",len(strace_all_node)
+	print "150 scamper link",len(strace_all_link)
+	print "150 scamper router",len(strace_all_router)
+	print "150 scamper route/node",len(strace_all_router)*1.0/len(strace_all_node)
+
+	print "\n>150 node,link,router(f/s)",
+	print len(ftrace_all_node)*1.0/len(strace_all_node),
+	print len(ftrace_all_link)*1.0/len(strace_all_link),
+	print len(ftrace_all_router)*1.0/len(strace_all_router)
+
 	only_strace_ip=strace_all_node.difference(ftrace_all_node)
 	only_ftrace_ip=ftrace_all_node.difference(strace_all_node)
-	print "only_strace_ip,only_ftrace_ip"
+	print "node only_strace_ip,only_ftrace_ip"
 	print len(only_strace_ip),len(only_ftrace_ip)
+	only_strace_link=strace_all_link.difference(ftrace_all_link)
+	only_ftrace_link=ftrace_all_link.difference(strace_all_link)
+	print "node only_strace_link,only_ftrace_link"
+	print len(only_strace_link),len(only_ftrace_link)
+	combine_node=strace_all_node.union(ftrace_all_node)
+	combine_link=strace_all_link.union(ftrace_all_link)
+
+	#写入最大可达跳数，及bnp停止时跳数
+	fw_max_avg_hop=open(sys.argv[3]+".max_avg_hop.csv",'w')
+	for i in max_avg_hop_dic:
+		fw_max_avg_hop.write(str(max_avg_hop_dic[i]['MAX_HOP_AVG'])+','+str(max_avg_hop_dic[i]['BNP_AVG'])+'\n')
+	fw_max_avg_hop.close()
 	# fw=open("only_strace_ip",'w')
 	# for ip in only_strace_ip:
 	# 	fw.write(ip+"\n")
@@ -499,7 +587,40 @@ def cmp_correct150():
 	# 	fw.write(ip+"\n")
 	# fw.close()
 	# draw(x,thoery_y,both_y,bnp_y)
-	
+	# fw=open("ftrace_all_link.csv",'w')
+	# for item in ftrace_all_link:
+	# 	fw.write(item.split()[0]+','+item.split()[1]+"\n")
+	# fw.close()
+def get_degree(link_set,node_set):
+	global fastrace_degree_dic
+	avg=0
+	G = nx.Graph()
+	i=0
+	for node in node_set:
+		
+		G.add_node(node)
+	for edge in link_set:
+		G.add_edge(edge.split()[0],edge.split()[1])
+	gl_100=0
+	one=1
+	max_d=0
+	for node in node_set:
+		# print G.degree(node)
+		d=int(G.degree(node))
+		if d>0:
+			if d>max_d:
+				max_d=d
+			if d==1:
+				one+=1
+			if d>10:
+				gl_100+=1
+			i+=1
+			if fastrace_degree_dic.has_key(d):
+				fastrace_degree_dic[d]+=1
+			else:
+				fastrace_degree_dic[d]=1
+			avg+=int(G.degree(node))
+	return avg*1.0/i,one,gl_100,i,max_d
 
 if __name__ == '__main__':
 	global bnp_sum,fastrace_all_target,scamper_all_target
@@ -507,6 +628,7 @@ if __name__ == '__main__':
 	global all_fastrace_send,all_fastrace_rebund,all_scamper_send
 	global ftrace_all_link,ftrace_all_node,ftrace_all_router
 	global strace_all_node,strace_all_link,strace_all_router
+	global fastrace_degree_dic
 	ftrace_all_node=set()
 	ftrace_all_link=set()
 	ftrace_all_router=set()
@@ -514,6 +636,7 @@ if __name__ == '__main__':
 	strace_all_node=set()
 	strace_all_link=set()
 
+	fastrace_degree_dic={}
 	bnp_sum=0
 	fastrace_all_target=0
 	scamper_all_target=0
@@ -523,19 +646,10 @@ if __name__ == '__main__':
 	bnp_avg_in_max_hop=0
 	all_fastrace_max_hop_avg_len=0
 	all_bnp_avg_len=0
-	if sys.argv[3] == "m":
-		mutil_cmp_correct()
-	elif sys.argv[3] == "n":
-		cmp_correct_single()
-		# every_cmp_correct('test-fastrace2/JP0108/test-fastrace2.fastrace','test-fastrace-scamper/JP0108/test-fastrace-scamper.json')
-	elif sys.argv[3]== "s":
-		cmp_ftrace_self_correct()
-	elif sys.argv[3]=="f":
-		get_fastrace_packet_by_file(sys.argv[1])
-	else:
-		pass
-		cmp_correct150()
+
+	cmp_correct150()
 		# runpath()
+
 def runpath():
 	froot=sys.argv[1]
 	x=[]

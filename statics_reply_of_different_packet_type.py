@@ -1,5 +1,3 @@
-
-#!/usr/bin/env python
 # -*- coding:utf-8 -*-
 import os
 import os.path
@@ -55,27 +53,34 @@ def get_fastrace(ffile):
 	return ALL_TARGET,TARGET_ARRIVE
 def cmp_correct150():
 	global icmp,tcp,udp,mix,isum,tsum,usum,msum
-	froot=sys.argv[1]
+	froot=sys.argv[1]  		#scamper root path
 	max_hop_gap={}
 	index=1
+	ALL_TARGET=0
+	min_mixa_rate=1
+	max_mixa_rate=0
 	for dirpath, dirnames, filenames in os.walk(froot):
 		# for filepath in filenames:
 		#     print os.path.join(dirpath, filepath)
 		for dirname in dirnames:
 			# print dirname
 			# print dirpath
-			mfile="test-fastrace4/"+dirname+"/test-fastrace4.fastrace"
-			tfile=dirpath+dirname+"/test-fastrace3.TCP.fastrace"
-			ifile=dirpath+dirname+"/test-fastrace3.ICMP.fastrace"
-			ifile="test-fastrace-scamper/"+dirname+"/test-fastrace-scamper.json"
-			ufile=dirpath+dirname+"/test-fastrace3.UDP.fastrace"
+			mfile="test-fastrace"+sys.argv[2]+"/"+dirname+"/test-fastrace"+sys.argv[2]+".fastrace"
+			
+			# ifile=dirpath+dirname+"/test-fastrace3.ICMP.fastrace"
+			ifile="test-fastrace-scamper/"+dirname+"/test-fastrace-scamper.json" 		#使用scamper的数据
+			# ufile=dirpath+dirname+"/test-fastrace3.UDP.fastrace"
+			# tfile=dirpath+dirname+"/test-fastrace3.TCP.fastrace"
+			ufile="test-fastrace-scamper2/"+dirname+"/test-fastrace-scamper2.udp.json"
+			tfile="test-fastrace-scamper2/"+dirname+"/test-fastrace-scamper2.tcp.json"
 			if os.path.exists(mfile) and os.path.exists(tfile) and os.path.exists(ifile) and os.path.exists(ufile):
 				mix_t,mix_a=get_fastrace(mfile)
 				# icmp_t,icmp_a=get_fastrace(ifile)
 				icmp_t,icmp_a=get_scamper(ifile)
-				udp_t,udp_a=get_fastrace(ufile)
-				tcp_t,tcp_a=get_fastrace(tfile)
-				
+				# udp_t,udp_a=get_fastrace(ufile)
+				# tcp_t,tcp_a=get_fastrace(tfile)
+				udp_t,udp_a=get_scamper(ufile)
+				tcp_t,tcp_a=get_scamper(tfile)
 				if mix_t==4096 and icmp_t==4096 and udp_t==4096 and tcp_t==4096:
 					if mix_a!=0 and icmp_a!=0 and udp_a!=0 and tcp_a!=0:
 						print '--------------------'
@@ -87,6 +92,10 @@ def cmp_correct150():
 						print "icmp",icmp_t,icmp_a,icmp_a*1.0/icmp_t
 						print "tcp",tcp_t,tcp_a,tcp_a*1.0/tcp_t
 						print "udp",udp_t,udp_a,udp_a*1.0/udp_t
+						if mix_a*1.0/mix_t < min_mixa_rate:
+							min_mixa_rate=mix_a*1.0/mix_t
+						if mix_a*1.0/mix_t > max_mixa_rate:
+							max_mixa_rate=mix_a*1.0/mix_t	
 						mix+=mix_a
 						icmp+=icmp_a
 						tcp+=tcp_a
@@ -96,9 +105,13 @@ def cmp_correct150():
 						isum+=icmp_t
 						tsum+=tcp_t
 						usum+=udp_t
+				else:
+					print "broken",mix_t,icmp_t,udp_t,tcp_t
 			else:
 				pass
-				# print "skip",dirname
+				print "skip",mfile
+	print "max_mixa_rate",max_mixa_rate
+	print "min_mixa_rate",min_mixa_rate
 	print "icmp,tcp,udp,mix"
 	print icmp,tcp,udp,mix
 	print "isum,tsum,usum,msum"
