@@ -59,6 +59,7 @@ def cmp_correct150():
 	ALL_TARGET=0
 	min_mixa_rate=1
 	max_mixa_rate=0
+	fw=open('packet_type.csv','w')
 	for dirpath, dirnames, filenames in os.walk(froot):
 		# for filepath in filenames:
 		#     print os.path.join(dirpath, filepath)
@@ -96,6 +97,7 @@ def cmp_correct150():
 							min_mixa_rate=mix_a*1.0/mix_t
 						if mix_a*1.0/mix_t > max_mixa_rate:
 							max_mixa_rate=mix_a*1.0/mix_t	
+						fw.write(str(mix_a*1.0/mix_t)+','+str(icmp_a*1.0/icmp_t)+','+str(tcp_a*1.0/tcp_t)+','+str(udp_a*1.0/udp_t)+'\n')
 						mix+=mix_a
 						icmp+=icmp_a
 						tcp+=tcp_a
@@ -117,6 +119,7 @@ def cmp_correct150():
 	print "isum,tsum,usum,msum"
 	print isum,tsum,usum,msum
 	print icmp*1.0/isum,tcp*1.0/tsum,udp*1.0/usum,mix*1.0/msum
+	fw.close()
 if __name__ == '__main__':
 	global icmp,tcp,udp,mix,isum,tsum,usum,msum
 	icmp=0
