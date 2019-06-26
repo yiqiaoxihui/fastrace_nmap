@@ -13,13 +13,13 @@ local bit = require "bit"
 local json = require "json"
 -- local datetime = require "datetime"
 -- local io = require "io"
-require('base')
-require('prober')
-require('last_hop')
+require('base')			--包含基础函数，全局变量
+require('prober')		--包含发包模块
+require('last_hop')		--包含末跳模块
 require('unit_test')
-local quicktrace = require('quicktrace')
-local last_N_hop = require('last_N_hop')
-local Stack=require('stack')
+local quicktrace = require('quicktrace')	--包含quicktrace模块
+local last_N_hop = require('last_N_hop')	--包含探测倒数n跳模块
+local Stack=require('stack')				--包含栈结构
 
 
 -- require('parsepack') in prober
@@ -57,6 +57,8 @@ end
 
 local function fail(err) return ("\n  ERROR: %s"):format(err or "") end
 
+--末跳上超时时，更换探测包，try为探测包类型数组下标
+--每次递增1
 local function GET_TRY(try)
 	if try >= NR_PROBING_ARRAY then
 		try = 2
@@ -66,7 +68,7 @@ local function GET_TRY(try)
 	return try
 end
 
-
+--发包入口函数，函数参数：目的ip,设置TTL,try:探测包类型
 local function hopping(dst_ip,ttl,try)
 	ALL_SEND_PACKET=ALL_SEND_PACKET+1
 	local pi={}		--探测信息
@@ -84,6 +86,7 @@ local function hopping(dst_ip,ttl,try)
 	else
 	end
 	local send_packet_type=PROBING_TYPE_ARRAY[try]
+	--不同探测包类型，选择的端口号不一样
 	pi['dport']=PROBING_DPORT_ARRAY[try]
 	pi['dport']=PROBING_DPORT_ARRAY[try]
 	pi['sport']=math.random(0x7000, 0xffff)		--why from 7000
@@ -143,6 +146,8 @@ end
 -- * on the same hop.
 -- */
 --//BNP backward on neighbor’s path
+--反向探测模块，从cmptrace->end，也是trace['end']开始，ttl递减探测
+--直到同一跳遇到相同的路由器接口，停止探测
 local function reverse_traceroute(trace,cmptrace)
 	local ttl
 	local rpk_type				--返回包类型
@@ -172,8 +177,9 @@ local function reverse_traceroute(trace,cmptrace)
 		--超时未响应
 		if rpk_type==RPK_TIMEOUT then
 			timeout=timeout+1
+			--更换探测包
 			try = GET_TRY(try)
-			if timeout >= MAX_TIMEOUT_PER_HOP then	--一跳上连续 MAX_TIMEOUT_PER_HOP 次超时
+			if timeout >= MAX_TIMEOUT_PER_HOP then	--一跳上连续 MAX_TIMEOUT_PER_HOP 次超时，探测下一跳
 				timeout=0
 				try=2 		--重置为2
 				trace['hop'][ttl]=0
@@ -183,21 +189,26 @@ local function reverse_traceroute(trace,cmptrace)
 				ttl=ttl+1 		--超时未到达上限，继续本跳探测
 			end	--end timeout==MAX_TIMEOUT_PER_HOP
 			-- ttl=ttl+1
+			--进行下一次while循环
 			goto reverse_hopping_begin
-		end		--end rpk_type==RPK_TIMEOUT 
+		end		--end rpk_type==RPK_TIMEOUT
+		--未超时，写入探测信息，重置超时计数器 
 		timeout=0
 		trace['hop'][ttl] = from
 		trace['rtt'][ttl]=rtt
 		trace['reply_ttl'][ttl]=reply_ttl
 		if rpk_type ~= RPK_TIMEEXC then
+			--是ICMP不可达消息
 			if IS_UNREACH(rpk_type) == 1 then 		--0 and 1 for lua is true
 				code=rpk_type - RPK_UNREACH
+				--仅当是端口不可达或协议不可达，才认为是目标回复
 				if code ~= ICMP_PROT_UNREACH and code ~= ICMP_PORT_UNREACH then
 					trace['rst'] = TR_RESULT_UNREACH
 		        	if VERBOSE >= 1 then
 		        		print("reverse_traceroute NOT_RPK_TIMEEXC IS_UNREACH TR_RESULT_UNREACH")
 		        	end
 				else
+					--仅当是端口不可达或协议不可达，才认为是目标回复
 					---print(">HOP:",ttl,"get target:",from)
 					trace['rst'] = TR_RESULT_GOTTHERE
 		        	if VERBOSE >= 1 then
@@ -205,6 +216,7 @@ local function reverse_traceroute(trace,cmptrace)
 		        	end
 				end
 			else
+				--如果不是ICMP不可达，也不是生存时间超时，认为本跳到达目标
 				---print(">HOP:",ttl,"get target:",from)
 	        	if VERBOSE >= 1 then
 	        		print("reverse_traceroute ,NOT RPK_TIMEEXC ,NOT IS_UNREACH ,TR_RESULT_GOTTHERE")
@@ -219,8 +231,9 @@ local function reverse_traceroute(trace,cmptrace)
             trace['end']=ttl
             goto reverse_hopping_begin
         end
+        --到这里，认为是生存时间超时消息
         ---print(">HOP:",ttl,"from:",from)
-        --错误的报文
+        --错误的报文：是生存时间超时，但是源IP为目标
         if from == trace['dst'] then
         	---print("!TR_RESULT_FAKE:",ttl,"from:",from)
         	trace['end'] = ttl
@@ -231,6 +244,7 @@ local function reverse_traceroute(trace,cmptrace)
         	end
         	goto reverse_hopping_begin
         end
+        --BNP,在相同跳上，遇到与参考路径相同的路由器接口
         if cmptrace ~= nil and cmptrace['start'] <= ttl and cmptrace['end'] >= ttl and cmptrace['hop'][ttl]~=0 and cmptrace['hop'][ttl] == trace['hop'][ttl] then
         	trace['BNP']=ttl
         	trace['start'] = ttl
@@ -241,6 +255,7 @@ local function reverse_traceroute(trace,cmptrace)
 			if VERBOSE >= 1 then
 				io.write("reverse_traceroute BNP, ","current ip has same hop with cmptrace on ttl = ",ttl," return\n")
 			end
+			--记录目标网段BNP次数，测试用
 			BNP_COUNT=BNP_COUNT+1
 			return 1
 		end
@@ -250,12 +265,14 @@ local function reverse_traceroute(trace,cmptrace)
 	if VERBOSE >= 1 then
 		io.write("reverse_traceroute ttl arrive 1, return\n")
 	end
+	--探测直到退出while循环，说明ttl递减到0了，设置start=1
 	trace['start']=1
 	if trace['rst'] == 0 then
 		trace['rst'] = TR_RESULT_DESIGN
 	end
 	return 1
 end
+--正向探测，ttl从cmptrace['end']递增探测
 local function forward_traceroute(trace,cmptrace)
 	local ttl			
 	local rpk_type				--返回包类型
@@ -267,7 +284,7 @@ local function forward_traceroute(trace,cmptrace)
 	local timeouth=0
 	local rtt
 	local reply_ttl
-	try=2					--更改发包类型,lua，table下标从1开始
+	try=2					--默认发包类型为icmp,lua，table下标从1开始
 	if cmptrace then
 		if trace['start']==0 then 				--treetrace->forward_reverse->this
 			trace['start']=cmptrace['end']		--从cmptrace end处开始,继续增加ttl探测
@@ -283,12 +300,15 @@ local function forward_traceroute(trace,cmptrace)
 	---print("forward_traceroute:")
 	while ttl <= MAX_HOP do
 		-- print("begin:",timeout,timeout_hops)
+		--本跳超时，更换探测包
 		if timeout >=1 or timeout_hops>=1 then
 			try=GET_TRY(try)
 		end
 		-- print("begin hopping:",rpk_type,from)
+		--在本跳上发包
 		rpk_type,from,rtt,reply_ttl=hopping(trace['dst'],ttl,try)
 		-- print("hopping:",rpk_type,from)
+		--收到未知错误报文，退出探测，很少发生
 		if rpk_type==0 then
 			---print("forward_traceroute stop because rpk_type 0!")
 			return -1
@@ -299,9 +319,10 @@ local function forward_traceroute(trace,cmptrace)
 			---print("*HOP:",ttl,"timeout:",timeout,timeout_hops)
 			if compare_each_from == 0 and cmptrace ~=nil then
 				--TODO:近邻无应答结束技术 NNS
-				--1.如果cmptrace当前hop超时，那此hop也超时
-				--2.如果 cmptrace 以响应超时结束，此结果也是超时
+				--1.如果cmptrace在最后一跳是超时结算，而未到达目标
+				--2.目标此跳也超时，则认为目标和cmptrace一样也不可达，退出
 				--近邻无应答结束技术 NNS
+				--问题：可能刚好在这一跳上超时，导致部分目标未发现，注注释338行取消NNS，以发现完整目标
 				if cmptrace['end'] == ttl and cmptrace['rst'] == TR_RESULT_TIMEOUT then
 					trace['hop'][ttl]=0
 					trace['rtt'][ttl]=0
@@ -313,18 +334,19 @@ local function forward_traceroute(trace,cmptrace)
 						io.write("forward_traceroute NNS by cmptrace, cmptrace stop on this ttl timeout, and this ip ",trace['dst']," timeout as well as cmptrace on this ttl= ",ttl,", NNS stop.\n")
 					end
 					NNS_COUNT=NNS_COUNT+1
-					return 1
+					--注释下面一行，表示不使用NNS
+					-- return 1
 				end
 			end
 
-			if timeout==MAX_TIMEOUT_PER_HOP then	--一跳上连续 MAX_TIMEOUT_PER_HOP 次超时
+			if timeout==MAX_TIMEOUT_PER_HOP then	--一跳上连续 MAX_TIMEOUT_PER_HOP 次超时，探测下一跳
 				timeout=0
 				try=2
 				timeout_hops=timeout_hops+1
 				trace['hop'][ttl]=0
 				trace['rtt'][ttl]=0
 				trace['reply_ttl'][ttl]=0
-				if timeout_hops>=MAX_TIMEOUT_HOPS then	--连续MAX_TIMEOUT_HOPS跳超时，退出，否则进行下一跳
+				if timeout_hops>=MAX_TIMEOUT_HOPS then	--连续MAX_TIMEOUT_HOPS跳超时，退出对目标的探测，否则进行下一跳
 					--Too many continuous timeout.
 					--Remain a router ZERO at the end of path.
 					trace['end']=ttl - MAX_TIMEOUT_HOPS+1
@@ -352,6 +374,7 @@ local function forward_traceroute(trace,cmptrace)
 		trace['rtt'][ttl]=rtt
 		trace['reply_ttl'][ttl]=reply_ttl
 		if rpk_type == RPK_TIMEEXC then
+			--检查是否遇到环路
 			if ttl>2 and from ~= trace['hop'][ttl-1] then 	--相邻两跳相同不算
 				local i
 				for i=trace['start'],ttl - 2 do 		--从start到ttl-2 与from对比，查看是否一致
@@ -366,7 +389,7 @@ local function forward_traceroute(trace,cmptrace)
 					end
 				end
 			end		--end if ttl>2 and from ~= trace['hop'][ttl-2]
-			if from == trace['dst'] then		--生存时间超时，却是目标发送的
+			if from == trace['dst'] then		--生存时间超时，却是目标发送的，认为错误报文
 				---print("!TR_RESULT_FAKE:",ttl,"from:",from)
 				trace['end']=ttl
 				trace['rst']=TR_RESULT_FAKE
@@ -375,6 +398,7 @@ local function forward_traceroute(trace,cmptrace)
 			if cmptrace ~= nil then
 				--TODO:treetrace
 				--trace->start==1,
+				--这个条件从未满足，if 函数体不执行，不清楚干啥的
 				if compare_each_from == 1 then
 					for i = cmptrace['start'] , cmptrace['end'] do
 						--ttl从1开始探测时，在from对应ttl时，发现与cmptrace一致的结果，
@@ -395,6 +419,7 @@ local function forward_traceroute(trace,cmptrace)
 					end
 				else
 					--trace['start'] = cmptrace['end']
+					--如果cmptrace因环路结束，目标在cmptrace.ttl=end 遇到相同路由器接口，认为也是环路，结束
 					if cmptrace['rst'] == TR_RESULT_LOOP and cmptrace['end'] == ttl and cmptrace['hop'][ttl] == trace['hop'][ttl] then
 						trace['end'] = ttl
 						trace['rst'] = TR_RESULT_LOOP
@@ -412,7 +437,7 @@ local function forward_traceroute(trace,cmptrace)
 		end		--end rpk_type== RPK_TIMEEXC
 		if (IS_UNREACH(rpk_type)==1) then
 			code = rpk_type  - RPK_UNREACH
-			--不是端口不可达和协议不可达的，都停止探测，why 协议不可达也可以继续
+			--不是端口不可达和协议不可达的，都停止探测，以不可达结束，端口不可达和协议不可达认为是目标的回复，到达目标
 			if code ~=  ICMP_PROT_UNREACH  and  code ~= ICMP_PORT_UNREACH then
 				trace['end'] = ttl
 				trace['rst'] = TR_RESULT_UNREACH
@@ -425,6 +450,7 @@ local function forward_traceroute(trace,cmptrace)
 		--排除超时未响应，ICMP生存时间超时，ICMP目标不可达(除去端口不可达、协议不可达)，返回包类型可能为：
 		--1.ICMP echo reply,端口不可达，协议不可达
 		--2.TCP RPK_RST	,RPK_SYNACK	,RPK_RSTACK
+		--认为到达目标，结束正向探测
 		do
 			trace['end']=ttl
 			trace['rst']=TR_RESULT_GOTTHERE
@@ -467,9 +493,13 @@ function search_loop(trace)
 	end--end for
 	return 0
 end
+--正向反向探测：
+--1.以rcmptrace的ttl=end开始正向探测forward_traceoute
+--2.以rcmptrace的ttl=end开始，反向探测reverse_traceroute
 function forward_reverse(trace,fcmptrace,rcmptrace)
 	local result
 	local fend
+	--开始正向探测
 	if forward_traceroute(trace,fcmptrace) == -1 then
 		return -1
 	end
@@ -477,19 +507,21 @@ function forward_reverse(trace,fcmptrace,rcmptrace)
 		--/* NO less TTL value for reverse_traceroute(). */
 		return 1
 	end
-	result = trace['rst']
+	result = trace['rst'] 
 	fend = trace['end']
 	trace['end'] = trace['start'] -1
-
+	--开始反向探测
 	if reverse_traceroute(trace,rcmptrace) ==-1 then 	--start=1 for reverse_traceroute
 		return -1
 	end
-	if trace['rst'] ~= TR_RESULT_DESIGN then 			--原因能是：在 reverse_traceroute 中到达目标 TR_RESULT_GOTTHERE
+
+	if trace['rst'] ~= TR_RESULT_DESIGN then 			--trace['rst']=TR_RESULT_GOTTHERE，原因能是：在 reverse_traceroute 中到达目标 TR_RESULT_GOTTHERE
 		if VERBOSE >=1 then
 			io.write('forward_reverse, arrive target in reverse_traceroute,real end: ',trace['end']," before end: ",fend,"\n")
 		end
 		return 1
 	end
+	--在正向探测时，因超时停止探测，找到最小超时的ttl，作为结束时的ttl
 	if result == TR_RESULT_TIMEOUT then
 		local i = fend 
 		while i>0 and trace['hop'][i] ==0 do 			--table begin from 1,找到第一个超时的，即为end
@@ -499,12 +531,13 @@ function forward_reverse(trace,fcmptrace,rcmptrace)
 	end
 	trace['rst'] = result
 	trace['end'] = fend
+	--查找环路，删除环路
 	if result == TR_RESULT_LOOP or result == TR_RESULT_MAXHOP then
 		search_loop(trace)
 	end
 	return 1
 end
-
+--测试停止前缀和获取节点，边，路由器接口的关系，与测量无关
 local function test_max_fpx(new_link,new_node,pfx,new_router)
 	for i=1, 31 do
 		if pfx <=i then
@@ -524,7 +557,7 @@ local function test_max_fpx(new_link,new_node,pfx,new_router)
 		end
 	end
 end
-
+--打印当前发现的新节点，边
 local function print_all_node_link()
 	print("^^^^^^^^^^^^^^^global_node^^^^^^^^^^^^^^^^^^")
 	for k,v in pairs(global_node) do
@@ -535,6 +568,7 @@ local function print_all_node_link()
 		print(k)
 	end
 end
+--将对目标探测发现的新边、节点记录到全局变量：global_node，global_link_hashmap
 local function get_new_link_node_number(trace,pfx)
 	local new_link = 0
 	local new_node = 0
@@ -557,6 +591,7 @@ local function get_new_link_node_number(trace,pfx)
 			else
 				link_key=trace['hop'][i]..'-'..trace['hop'][i+1]
 			end
+			--如果是新边，记录
 			if global_link_hashmap[link_key] == nil then
 				ALL_LINK=ALL_LINK+1
 				new_link= new_link + 1
@@ -570,14 +605,15 @@ local function get_new_link_node_number(trace,pfx)
 				-- return 1
 			end
 		end
-
+		--如果是新节点，记录
 		if trace['hop'][i] ~= 0 and global_node[trace['hop'][i]] == nil then
 			new_node = new_node + 1
 			new_router=new_router+1
+			--全局变量，统计总节点
 			ALL_NODE = ALL_NODE +1
-			--全部目标发包变化
+			--全部目标发包变化,第ALL_NODE个节点时，一共发了多少包
 			EVERY_TATGET_SEND[ALL_NODE]=ALL_SEND_PACKET
-			--路由器发包变化
+			--路由器发包变化，发现第MID_ROUTER_COUNT个路由器接口时，一共发了多少包
 			MID_ROUTER_COUNT=MID_ROUTER_COUNT+1
 			MID_ROUTER_SEND[MID_ROUTER_COUNT]=ALL_SEND_PACKET
 			global_node[trace['hop'][i]] = 1
@@ -588,7 +624,7 @@ local function get_new_link_node_number(trace,pfx)
 		end
 	end
 
-	--统计最后的节点
+	--统计最后一跳的节点
 	if trace['hop'][trace['end']] ~= nil and trace['hop'][trace['end']] ~= 0 and global_node[trace['hop'][trace['end']]] == nil then
 		new_node = new_node + 1
 		if trace['hop'][trace['end']] ~= trace['dst'] then 	--不是目标，就是路由器
@@ -615,7 +651,7 @@ local function get_new_link_node_number(trace,pfx)
 	end
 	return new_link,new_node
 end
-
+--对单个目标的traceroute
 local function normal_traceroute(dst_ip)
 	local trace={}
 	trace['dst']=dst_ip
@@ -629,6 +665,7 @@ local function normal_traceroute(dst_ip)
 	get_new_link_node_number(trace,32) 		--更新已获取边，节点
 	print_tr(trace,iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 end
+--对于反向探测停止时，拷贝参考路径从第1跳到反向停止跳的路由器接口信息，作为目标的探测结果
 local function copy_tracehop(tracedst,tracesrc,ttls,ttle)
 	--copy from reverse_traceroute
 	for i=ttls,ttle do
@@ -639,6 +676,7 @@ local function copy_tracehop(tracedst,tracesrc,ttls,ttle)
 	end
 	tracedst['start']=ttls
 end
+--比较两者目标的末跳是否相同，相同返回0
 local function compare_endrouter(trace1,trace2)
 	--比较末跳时，必须都到达目标
 	if trace1['dst'] ~= trace1['hop'][trace1['end']] or trace2['dst'] ~= trace2['hop'][trace2['end']] then
@@ -655,6 +693,8 @@ local function compare_endrouter(trace1,trace2)
 	return 1
 	-- body
 end
+
+--弃用，无意义
 local function last_n_hop_is_new(trace)
 	print("IMPROVE last_n_hop_is_new",IMPROVE,VERBOSE)
 	for i=(trace['end']-1)-2,trace['end']-1 do
@@ -675,7 +715,9 @@ local function last_n_hop_is_new(trace)
 		end
 	end
 end
-
+--在前缀为prefix停止继续探测时，直接对prefix构成的网段在第hop跳前后两跳的探测，hop为到达该网段目标的跳数
+--以降低发包量，不用对网段内目标进行完整的tracroute，但这种改善没有理论依据
+--子网探测已弃用这种方法
 local function quicktrace_subnet(ip,prefix,hop)
 	local number_ip = ipOps.todword(ip)
 	if not number_ip then
@@ -684,12 +726,13 @@ local function quicktrace_subnet(ip,prefix,hop)
 	end
 	local begin_ip= bit.band(number_ip,(bit.lshift(0xffffffff,(32-prefix))))
 	local number=bit.rshift(0xffffffff,prefix)
-
+	--遍历ip/prefix内的全部目标，除去两端已探测的目标
 	for i = begin_ip+2, begin_ip+number-2 do
 		local now_ip=fastrace_fromdword(i)
 		if VERBOSE >=1 then
 			print("IMPROVE quicktrace_subnet:",number,now_ip,prefix,hop)
 		end
+		--快速探测hop的前后两跳
 		local now_trace=quicktrace.quicktrace_main(now_ip,iface,VERBOSE,hop-2,hop+2)
 		ALL_SEND_PACKET = ALL_SEND_PACKET + 3
 		QUICKTRACE_SENT=QUICKTRACE_SENT+3
@@ -700,6 +743,8 @@ local function quicktrace_subnet(ip,prefix,hop)
 		get_new_link_node_number(now_trace,prefix)
 	end
 end
+--子网探测核心函数
+--将cidr网段不断划分成更小网段，对网段两端目标进行正向反向探测，划分网段直到max_prefix_len,设置为31，覆盖全部目标
 
 local function treetrace(cidr)
 	-- print("verbose:",VERBOSE)
@@ -737,18 +782,22 @@ local function treetrace(cidr)
 	if VERBOSE >= 1 then
 		io.write("Fastrace ",newsr['trace']['dst'],"/",newsr['pfx']," at ",os.date("%Y-%m-%d %H:%M:%S"),"\n")
 	end
+	--1.1.1.1/20
+	--首先对网段内第一个目标正常traceroute,后续才能以此目标作为参考进行正向反向探测
 	if forward_traceroute(newsr['trace'],nil)==-1 then
 		newsr=nil
 		io.write("Fastrace STOP IN treetrace->forward_traceroute \n")
 		return
 	end
 	ALL_TARGET=ALL_TARGET+1
+	--统计对目标探测，是否发现新边，节点
 	new_link , new_node = get_new_link_node_number(newsr['trace'],newsr['pfx'])
 	if new_link > 0 or new_node >0 then
 		newsr['find_new'] = 1
 	else
 		newsr['find_new'] =0 
 	end
+	--创建栈，将已探测第一个目标及当前前缀压栈
 	local s = Stack:new()
 	s:push(newsr)
 	while s:is_empty() == false do
@@ -766,7 +815,7 @@ local function treetrace(cidr)
 		-- 	end
 		-- end
 		newsr['trace']={}
-		--子网第一个元素
+		--如果栈顶时子网第一个元素，取出子网最后一个元素
 		if HOSTADDR(oldsr['trace']['dst'],oldsr['pfx'])  == 1 then
 			--取子网最后一个元素
 			newsr['trace']['dst'] = IP_DEC(NETADDR(oldsr['trace']['dst'],oldsr['pfx']) + bit.rshift(0xffffffff,oldsr['pfx']))
@@ -775,6 +824,7 @@ local function treetrace(cidr)
 				io.write("|--",newsr['trace']['dst'],"/",oldsr['pfx'],"-------get last  ip of subnet\n")
 			end
 		else
+			--如果栈顶时子网最后一个元素，取出子网第一个元素
 			newsr['trace']['dst'] = IP_INC(NETADDR(oldsr['trace']['dst'],oldsr['pfx']))
 			if VERBOSE >= 1 then
 				io.write("|--",newsr['trace']['dst'],"/",oldsr['pfx'],"-------get first ip of subnet\n")
@@ -789,25 +839,27 @@ local function treetrace(cidr)
 		end
 		newsr['trace']['BNP']=-1
 		newsr['trace']['cmp_ip']=oldsr['trace']['dst']
+		--以栈顶参考目标，进行正向反向探测
 		if forward_reverse(newsr['trace'],oldsr['trace'],oldsr['trace']) == -1 then
 			s:clear()
 			io.write("Fastrace STOP IN treetrace->forward_reverse \n")
 			return
 		end
+		--获取目标发现的新边，节点数量
 		new_link , new_node = get_new_link_node_number(newsr['trace'],oldsr['pfx'])
 		if new_link > 0 or new_node >0 then
 			newsr['find_new'] = 1
 		else
 			newsr['find_new'] = 0
 		end
-
+		--对于反向探测停止时，拷贝参考路径从第1跳到反向停止跳的路由器接口信息，作为目标的探测结果
 		copy_tracehop(newsr['trace'],oldsr['trace'],1,newsr['trace']['start']-1)
 		if newsr['trace']['rst'] == TR_RESULT_LOOP or newsr['trace']['rst'] ==TR_RESULT_MAXHOP then
 			search_loop(newsr['trace'])
 		end
 		--IMPROVE:对新发现的最后几个新发现的节点也trace,但必须在copy_tracehop之后
 		-- last_n_hop_is_new(newsr['trace'])
-		--比较末跳路由，如果一致，则认为在同一子网
+		--比较末跳路由，如果一致，则认为在同一子网，并且前缀大于MIN_PREFIX_LEN时，弹栈，终止对当前网段探测
 		if compare_endrouter(newsr['trace'],oldsr['trace']) == 0 and oldsr['pfx'] >= MIN_PREFIX_LEN then
 			s:pop()
 			SAME_SUBNET_COUNT=SAME_SUBNET_COUNT+1
@@ -823,18 +875,19 @@ local function treetrace(cidr)
 			end
 			print_tr(oldsr['trace'],iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			print_tr(newsr['trace'],iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
-			--IMPROVE:弹出时，对子网中间ip进行quicktrace
-			if IMPROVE >=1 then
-				if VERBOSE >= 1 then 
-					io.write("IMPROVE compare_endrouter\n")
-				end
-				quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
-			end
+			--IMPROVE:弹出时，对子网中间ip进行quicktrace，弃用，没有理论依据
+			-- if IMPROVE >=1 then
+			-- 	if VERBOSE >= 1 then 
+			-- 		io.write("IMPROVE compare_endrouter\n")
+			-- 	end
+			-- 	quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
+			-- end
 			oldsr={}
 			newsr={}
 			goto TREETRACE_WHILE
 		end
 		--Min non-new netmark prefix lenth. 
+		--当前网段两端目标均未发现新边，节点，且前缀大于MIN_NO_NEW_PREFIX时，弹栈，终止对当前网段探测
 		if newsr['find_new'] == 0 and oldsr['find_new'] == 0 and oldsr['pfx'] >= MIN_NO_NEW_PREFIX then
 			s:pop()
 			NO_NEW_LINK_NODE_COUNT=NO_NEW_LINK_NODE_COUNT+1
@@ -849,16 +902,18 @@ local function treetrace(cidr)
 			end
 			print_tr(oldsr['trace'],iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
 			print_tr(newsr['trace'],iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
-			if IMPROVE >=1 then
-				if VERBOSE >= 1 then 
-					io.write("IMPROVE No new links found, pfx,min_no_new_prefix: ",oldsr['pfx']," ",MIN_NO_NEW_PREFIX,"\n")
-				end
-				quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
-			end
+			--对网段内目标进行quicktrace_subnet，无理论依据，弃用
+			-- if IMPROVE >=1 then
+			-- 	if VERBOSE >= 1 then 
+			-- 		io.write("IMPROVE No new links found, pfx,min_no_new_prefix: ",oldsr['pfx']," ",MIN_NO_NEW_PREFIX,"\n")
+			-- 	end
+			-- 	quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
+			-- end
 			oldsr={}
 			newsr={}
 			goto TREETRACE_WHILE
 		end
+		--当前网段前缀到达最大停止前缀MAX_PREFIX_LEN，停止探测，MAX_PREFIX_LEN=31，覆盖全部目标（当然MIN_NO_NEW_PREFIX，MIN_PREFIX_LEN也要设未31）
 		if (oldsr['pfx']) >= MAX_PREFIX_LEN then
 			s:pop()
 			if VERBOSE >= 1 then
@@ -873,16 +928,18 @@ local function treetrace(cidr)
 			-- 	print("SUBNET arrive max prefix lenth,pop():",fastrace_fromdword(NETADDR(newsr['trace']['dst'],oldsr['pfx']+1)),oldsr['pfx']+1)
 			-- end
 			print_tr(newsr['trace'],iface.address,OUTPUT_FILE_HANDLER,OUTPUT_TYPE)
-			if IMPROVE >=1 then
-				if VERBOSE >= 1 then 
-					io.write("IMPROVE arrive MAX_PREFIX_LEN, pfx,MAX_PREFIX_LEN: ",oldsr['pfx']," ",MAX_PREFIX_LEN,"\n")
-				end
-				quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
-			end
+			--将该网段弹出时，对网段内目标进行quicktrace_subnet，无理论依据，弃用
+			-- if IMPROVE >=1 then
+			-- 	if VERBOSE >= 1 then 
+			-- 		io.write("IMPROVE arrive MAX_PREFIX_LEN, pfx,MAX_PREFIX_LEN: ",oldsr['pfx']," ",MAX_PREFIX_LEN,"\n")
+			-- 	end
+			-- 	quicktrace_subnet(oldsr['trace']['dst'],oldsr['pfx'],oldsr['trace']['end'])
+			-- end
 			oldsr={}
 			newsr={}
 			goto TREETRACE_WHILE
 		end
+		--不符合弹栈条件，将当前网段前缀pfx加1，意思是分为两个子网段，为了进一步对两个子网段两端目标进行正向反向探测
 		oldsr['pfx']=oldsr['pfx']+1
 		newsr['pfx']=oldsr['pfx']
 		s:push(newsr)
@@ -899,7 +956,7 @@ local function treetrace(cidr)
 	end --end for while
 	s:clear()
 end
-
+--末跳探测模块入口，参数：目标ip，网卡接口，result为了当前函数执行完，发送信号，
 local function last_hop(dst_ip,iface,result)
 	local last_hop_condvar = nmap.condvar(result)
 	print('target:',dst_ip)
@@ -929,9 +986,11 @@ local function print_help()
 end
 
 action=function(host)
+	--记录执行时间
 	local start_time=os.time()
 	print("__________________")
 	-- print(MID_IP("1.1.1.1",29))
+	--获取网卡接口信息，使用-sn -n 8.8.8.8可以默认选择外网网卡
 	local ifname = nmap.get_interface() or host.interface
 	if not ifname then
 		return fail("Failed to determine the network interface name")
@@ -945,6 +1004,7 @@ action=function(host)
 	iface = nmap.get_interface_info(ifname)
 	send_l3_sock = nmap.new_dnet()
 	send_l3_sock:ip_open()
+	--从参数里读入目标或目标文件
 	local dst_ip=stdnse.get_script_args("ip")
 	local ip_file=stdnse.get_script_args("ip_file")
 	if (not dst_ip)  and (not ip_file) then
@@ -953,11 +1013,10 @@ action=function(host)
 	if (dst_ip)  and (ip_file) then
 		return fail("error:muti target")
 	end
-	
-
+	--选择子网探测时，使用的探测包类型，MIX/TCP/ICMP/UDP
 	PACKET_TYPE=stdnse.get_script_args("packet_type")	--默认traceroute
 	-- verbose=0
-	VERBOSE=stdnse.get_script_args("verbose")								--调试信息等级
+	VERBOSE=stdnse.get_script_args("verbose")								--输出调试信息等级
 	MAX_TIMEOUT_PER_HOP=stdnse.get_script_args("max_timeout_per_hop")		--单跳最大重试次数
 	MAX_TIMEOUT_HOPS=stdnse.get_script_args("max_continue_timeout_hops")	--最大连续超时跳数
 	MAX_PREFIX_LEN=stdnse.get_script_args("max_prefix_len")					--treetrace最大探测子网前缀
@@ -965,27 +1024,28 @@ action=function(host)
 	MIN_NO_NEW_PREFIX=stdnse.get_script_args("min_no_new_prefix")			--treetrace子网未发现新的节点或边时最小停止探测前缀
 
 	VERBOSE=tonumber(VERBOSE)
-	MAX_TIMEOUT_PER_HOP=tonumber(MAX_TIMEOUT_PER_HOP)
+	MAX_TIMEOUT_PER_HOP=tonumber(MAX_TIMEOUT_PER_HOP)						
 	MAX_TIMEOUT_HOPS=tonumber(MAX_TIMEOUT_HOPS)
 	MAX_PREFIX_LEN=tonumber(MAX_PREFIX_LEN)
 	MIN_PREFIX_LEN=tonumber(MIN_PREFIX_LEN)
 	MIN_NO_NEW_PREFIX=tonumber(MIN_NO_NEW_PREFIX)
 	--结果输出文件
-	OUTPUT_TYPE=stdnse.get_script_args("output_type")
+	OUTPUT_TYPE=stdnse.get_script_args("output_type")						--输出类型，output_type!=file,则只输出控制台
 	OUTPUT_FILE_HANDLER=""
 	-- print("IMPROVE",IMPROVE)
 	-- print(OUTPUT_TYPE)
+	--写入文件
 	if OUTPUT_TYPE == "file" then
 		OUTPUT_FILENAME=stdnse.get_script_args("output_filename")
 		OUTPUT_FILE_HANDLER=io.open(OUTPUT_FILENAME,'w')
 	end
-	--是否使用改善方案
+	--是否使用改善方案，已弃用，
 	IMPROVE=stdnse.get_script_args("improve")
 	IMPROVE=tonumber(IMPROVE)
-	DEBUG=0
+	DEBUG=0 		--已弃用
 	-- print("verbose,debug:",VERBOSE,DEBUG)
-	global_link_hashmap={}
-	global_node={}
+	global_link_hashmap={}		--记录全局边信息
+	global_node={}				--记录全局节点信息
 	-- VERBOSE=1
 	if prober_type == "quicktrace" then
 		if dst_ip then
@@ -1016,6 +1076,7 @@ action=function(host)
 		return true
 	end 
 	--last_N_hop
+	--探测倒数第n跳
 	if prober_type == "lastnhop" then
 		LAST_N_HOP_NUMBER=stdnse.get_script_args("hops")						--获取倒数多少跳
 		LAST_N_HOP_NUMBER=tonumber(LAST_N_HOP_NUMBER)
@@ -1042,6 +1103,9 @@ action=function(host)
 		end
 		return true
 	end
+
+
+	--末跳探测
 	if prober_type =='last_hop' then
 		if dst_ip then
 			local ip, err = ipOps.expand_ip(dst_ip)
@@ -1119,17 +1183,8 @@ action=function(host)
 		print("__________________")
 		return true
 	end
-	--针对单个ip的正常traceroute
-	-- rpk_type,from= hopping(dst_ip,32,1)
-	-- print(rpk_type,from)
-	--调用last_hop.lua
-	
-	-- normal_traceroute(dst_ip)
-	-- local tp={}
-	-- tp['point']={}
-	-- test(tp['point'])
-	-- print(tp['point']['a'])
 
+	--不指定探测类型type，默认traceroute或子网发现
 	if dst_ip then
 		local cidr = str2cidr(dst_ip)
 		-- print(cidr['net'],cidr['pfx'])
